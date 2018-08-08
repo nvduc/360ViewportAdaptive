@@ -531,7 +531,6 @@ int main(int argc, char* argv[]){
                     sprintf(buf, "result/video_%s/%dx%d/fixedDASH/realtrace/avg_realtrace_DASH_VER_%d_htrace_%d.txt",vname, meta->video_info.W, meta->video_info.H, rcfg.DASH_VER[dash_ver_id], rcfg.HEADTRACE_LIST[htrace_id]);
                     printf("#[main] vname=%s\n", vname);
                     fout = fopen(buf, "w");                    
-
                     fprintf(fout, "%d\t", rcfg.HEADTRACE_LIST[htrace_id]);
                       for(method_id = 0; method_id < rcfg.METHOD_NUM; method_id ++){
                         fprintf(fout, "%.2f\t", avgVPSNR_case6[htrace_id][method_id]);
@@ -564,15 +563,9 @@ int main(int argc, char* argv[]){
                       for(index = 0; index < rcfg.NO_SEG; index++){
                         // decEngine.seg_thrp[index] = adaptInfo.BW;
                         tile_ver = decEngine.get_next_segment(index);
-                        // request segment
-                        // calculate download time and update buffer levels
+                        // download tiles' versions
                         decEngine.seg_thrp[index] = bw;
-                        decEngine.seg_down_time[index] = decEngine.seg_br[index]*1.0*(adaptInfo.INTER*1.0/decEngine.FPS) / decEngine.seg_thrp[index];
-                        if(index==0)
-                          decEngine.buff_level[index] += adaptInfo.INTER*1.0/decEngine.FPS;
-                        else
-                          decEngine.buff_level[index] = decEngine.buff_level[index-1] + (adaptInfo.INTER*1.0/decEngine.FPS - decEngine.seg_down_time[index]);
-                        
+                        decEngine.down_next_segment(index); 
                       }
                       /* calculate  metrics */
                       decEngine.calc_result(rcfg.NO_SEG);
@@ -583,20 +576,8 @@ int main(int argc, char* argv[]){
                       printf("#[method #%d] calc time: %.2f(ms)\n", method_id, tvdiff_us(&t_end, &t_start)/1000.0);
                 }
               }
-              // for(htrace_id=0; htrace_id < rcfg.HEADTRACE_NUM; htrace_id++){
-              //       sprintf(buf, "result/video_%s/%dx%d/fixedBW/realtrace/avg_realtrace_BW_%d_htrace_%d.txt",vname, meta->video_info.W, meta->video_info.H, bw, rcfg.HEADTRACE_LIST[htrace_id]);
-              //       printf("#[main] vname=%s\n", vname);
-              //       fout = fopen(buf, "w");                    
-
-              //       fprintf(fout, "%d\t", rcfg.HEADTRACE_LIST[htrace_id]);
-              //         for(method_id = 0; method_id < rcfg.METHOD_NUM; method_id ++){
-              //           fprintf(fout, "%.2f\t", avgVPSNR_case6[htrace_id][method_id]);
-              //         }
-              //         fprintf(fout, "\n");
-                    
-              // }
-            }
           }
+        }
         }
       break;
       // bandwidth traces

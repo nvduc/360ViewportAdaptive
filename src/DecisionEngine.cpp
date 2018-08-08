@@ -196,6 +196,7 @@ DecisionEngine::DecisionEngine(Metadata* meta, AdaptInfo adaptInfo){
   est_seg_thrp = new double[NO_SEG];
   // buffer
   buff_level = new double[NO_SEG];
+  stall_time = new double[NO_SEG];
   seg_down_time = new double[NO_SEG];
   B_0 = 1; // initial buffering
   // viewport2
@@ -218,6 +219,7 @@ DecisionEngine::DecisionEngine(Metadata* meta, AdaptInfo adaptInfo){
   //
   vpsnr = new double[NO_FRAME];
   seg_br = new double[NO_SEG];
+  all_seg_br = new double[NO_SEG];
   vp_br = new double[NO_SEG];
   seg_vp_psnr = new double[NO_SEG];
   // 
@@ -305,6 +307,32 @@ int* DecisionEngine::get_next_segment(int index){
     if(TILE_SELECT_METHOD == 1) break;
   }
   return tile_ver[index];
+}
+void DecisionEngine::down_next_segment(int index){
+  // request and receive tiles' versions
+  // calculate download metrics and update buffer
+  seg_down_time[index] = seg_br[index]*1.0*(INTER*1.0/FPS) / seg_thrp[index];
+  if(index < BUFF/INTER){
+    buff_level[index] += INTER*1.0/FPS;
+    stall_time[index] = 0;
+  }
+  else{
+    if(BUFFERING_STATE == false){
+      if(buff_level[index-1] < seg_down_time[index])
+        stall_time[index] = seg_down_time[index] - buff_level[index-1];
+      else
+        stall_time[index] = 0;
+      buff_level[index] = buff_level[index-1] + INTER*1.0/FPS - seg_down_time[index] + stall_time[index];
+      if(stall_time[index] > 0)
+        BUFFERING_STATE = true;
+    }else{
+      stall_time[index] = seg_down_time[index];
+      buff_level[index] += INTER*1.0/FPS;
+    }
+  } 
+  // switch to normal state after a rebuffering
+  if(BUFFERING_STATE == true && buff_level[index] == B_max)
+   BUFFERING_STATE = false; 
 }
 void DecisionEngine::calc_result(int NO_SEG){
   int index, i, j, num1, num2, num;
@@ -563,11 +591,9 @@ double DecisionEngine::calc_useful_ext_tile_percent(int index, int frame_id){
   int* vpixel = get_visible_pixel(htrace[index*INTER + frame_id]);
   bool FLAG;
   double num = 0;
-  for(i=0; i < No_tile; i++)
-    if(tile_ver[index][i] > 0 && vmask_est[i] == 0 && vmask_frame[i] == 1)
-      num += vpixel[i];
-  return num / (vp_W * vp_H);
+  
 }
+
 double DecisionEngine::calc_useful_ext_tile_br(int index, int frame_id){
   int i,j, jj;
   int* vmask_est = get_visible_tile(est_vp[index]);
@@ -592,6 +618,7 @@ double DecisionEngine::calc_avg_visi_tile_ver(int index, int frame_id){
   }
   return avg_ver/cnt;
 }
+
 double DecisionEngine::calc_sversion(int index, int frame_id){
   int i,j,cnt=0;
   int* vmask = get_visible_tile(htrace[index*INTER + frame_id]);
@@ -621,6 +648,18 @@ void DecisionEngine::thrp_estimator(int index){
     est_thrp_act[index] = (1- alpha) * est_thrp_act[index -1] + alpha * seg_thrp[index-1];
     est_seg_thrp[index] = (1-margin) * est_thrp_act[index];
     est_seg_thrp[index] = seg_thrp[index-1]; // last throughput-based
+  }
+  // decide the total bitrate allocated for tiles
+  switch(TILE_SELECT_METHOD){
+    case 12:
+      if(index==0)
+        all_seg_br[index] = 0;
+      else
+        if(BUFFERING_STATE == false)
+          all_seg_br[index] = (buff_level[index-1] - B_target + INTER * 1.0/FPS)*est_seg_thrp[index]/(INTER * 1.0 / FPS); 
+        else
+          all_seg_br[index] = est_seg_thrp[index]/2; 
+      break; 
   }
 }
 void DecisionEngine::vp_estimator(int index){
@@ -2735,6 +2774,11 @@ int* DecisionEngine::ProbDASH(int index){
   double** d = TILE_SEG_MSE[index]; // tiles' distortions
   // double** d = TILE_SEG_PSNR[index]; // tiles' distortions
   // 
+  if(index < BUFF/INTER){
+    for(i=0; i < No_tile; i++)
+      tileVer[i] = 0;
+    return tileVer;
+  }
   try {
     GRBEnv env = GRBEnv();
     GRBModel model = GRBModel(env);
@@ -2820,7 +2864,7 @@ int* DecisionEngine::ProbDASH(int index){
         }
         model.addConstr(constr_2[i] == 1, "constr_2");
     }
-    model.addConstr(constr_1 <= est_seg_thrp[index], "constr_1");
+    model.addConstr(constr_1 <= all_seg_br[index], "constr_1");
     // Optimize model
     model.optimize();
     for(i=0; i < No_tile; i++){

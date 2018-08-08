@@ -63,8 +63,13 @@ class DecisionEngine{
     double* est_seg_thrp;
     /* buffer-related */
     double* buff_level;
+    double* stall_time;
     double* seg_down_time;
     double B_0; // initial buffer size
+    // prob360DASH
+    double B_target = 0.8;
+    double B_max = 0.8;
+    bool BUFFERING_STATE = true;
     /* viewport-related */
     int* visiTileOut; // number of visible tiles not included in the visible tiles associated to the est. vp
     double* visiTileOut_percent; // number of visible tiles not included in the visible tiles associated to the est (pixel percentage)
@@ -93,6 +98,7 @@ class DecisionEngine{
     int* proc_time;   // processing time
     double* vpsnr;    // frames' viewport psnr
     double* seg_br;   // segments' bitrates
+    double* all_seg_br;   // segments' bitrates
     double* vp_br; // estimated segments' viewport bitrates 
     double* seg_vp_psnr; // segments' avg. viewport psnr
     //
@@ -105,6 +111,7 @@ class DecisionEngine{
     double*** Cost;         // Cost
     /* function declarations */
     int* get_next_segment(int index);
+    void down_next_segment(int index);
     void thrp_estimator(int index);
     void vp_estimator(int index);
     DecisionEngine(Metadata* meta, AdaptInfo adaptInfo);
