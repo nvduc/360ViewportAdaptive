@@ -7,6 +7,7 @@ struct AdaptInfo{
   int VP_EST_METHOD;
   int TILE_SELECT_METHOD;
   int BW;
+  int BWTRACE_ID;
 };
 struct Orient{
     double alpha;
@@ -49,6 +50,7 @@ class DecisionEngine{
     double*** TILE_SEG_PSNR;
     int No_user;
     int** htrace;
+    double** bw_trace;
     int HTRACE_ID;
     int VP_EST_METHOD;
     double* VER_AVG_BR;
@@ -62,13 +64,19 @@ class DecisionEngine{
     double* est_thrp_act;
     double* est_seg_thrp;
     /* buffer-related */
+    int* last_frame_id;
     double* buff_level;
     double* stall_time;
     double* seg_down_time;
+    double* seg_down_start_time;
+    double* seg_down_finis_time;
+    double* time_to_next_request;
     double B_0; // initial buffer size
     // prob360DASH
     double B_target = 0.8;
     double B_max = 0.8;
+    // Ghent
+    double B_cri = 2.0;
     bool BUFFERING_STATE = true;
     /* viewport-related */
     int* visiTileOut; // number of visible tiles not included in the visible tiles associated to the est. vp
@@ -112,6 +120,8 @@ class DecisionEngine{
     /* function declarations */
     int* get_next_segment(int index);
     void down_next_segment(int index);
+    void down_next_segment_2(int index);
+    double calc_seg_down_time(double t_start, double br,double SD, double** bw_trace);
     void thrp_estimator(int index);
     void vp_estimator(int index);
     DecisionEngine(Metadata* meta, AdaptInfo adaptInfo);
@@ -153,6 +163,7 @@ class DecisionEngine{
     void write_result_5(int, int, int, int, int);
     void write_result_6(int, int, int);
     void write_result_7(int, int, int);
+    void write_result_8(int, int, int);
     template <typename T>
     std::vector<int> sort_index(std::vector<T> const& values);
     double* calc_tile_view_prob(double, double, double, double, double, double);

@@ -19,7 +19,7 @@
 #include <vector>
 #include <algorithm>
 #include <malloc.h>
-
+// File in 'exper' branch
 DecisionEngine::DecisionEngine(Metadata* meta, AdaptInfo adaptInfo){
   int i,j,k, tid;
   metadata = meta;
@@ -40,10 +40,12 @@ DecisionEngine::DecisionEngine(Metadata* meta, AdaptInfo adaptInfo){
       break;
   }
   // Timelapse_NY_24_frame
+  /*
   switch(INTER){
     case 24:
       INTER_ID = 0;
   }
+  */
   BW = adaptInfo.BW;
   BUFF = adaptInfo.BUFF;
   TILING = adaptInfo.TILING;
@@ -76,6 +78,9 @@ DecisionEngine::DecisionEngine(Metadata* meta, AdaptInfo adaptInfo){
   vp_W = metadata->video_info.tile[TILING].vp_W;
   W = metadata->video_info.W;
   H = metadata->video_info.H;
+  B_max = BUFF*1.0/FPS;
+  B_target = B_max;
+  B_cri = B_max;
   // DASH-info
   DASH_SEG_BR = init2dArrayDouble(NO_SEG, NO_VER);
   DASH_SEG_PSNR = init2dArrayDouble(NO_SEG, NO_VER);
@@ -198,6 +203,9 @@ DecisionEngine::DecisionEngine(Metadata* meta, AdaptInfo adaptInfo){
   buff_level = new double[NO_SEG];
   stall_time = new double[NO_SEG];
   seg_down_time = new double[NO_SEG];
+  seg_down_start_time = new double[NO_SEG];
+  seg_down_finis_time = new double[NO_SEG];
+  time_to_next_request = new double[NO_SEG];
   B_0 = 1; // initial buffering
   // viewport2
   cur_vp = init2dArrayInt(NO_SEG, 2);
@@ -240,6 +248,15 @@ DecisionEngine::DecisionEngine(Metadata* meta, AdaptInfo adaptInfo){
   est_err_ang = new double[NO_FRAME];
   visiTileOut_percent = new double[NO_FRAME];
   visiTileOut_br = new double[NO_FRAME];
+  last_frame_id = new int[NO_FRAME];
+  // load real bandwidth traces
+  sprintf(buff, "data/bw_trace/trace_%d.txt", adaptInfo.BWTRACE_ID);
+  ret = metadata->import_matrix_from_txt_file(buff, v, rows, cols);
+  bw_trace = init2dArrayDouble(rows, 2);
+  for(i=0; i < rows; i++){
+    bw_trace[i][0] = v[i*2];
+    bw_trace[i][1] = v[i*2+1];
+  }
   printf("#[DecisionEngine] init() finished #\n");
 }
 DecisionEngine::~DecisionEngine(){
@@ -308,13 +325,47 @@ int* DecisionEngine::get_next_segment(int index){
   }
   return tile_ver[index];
 }
-void DecisionEngine::down_next_segment(int index){
+
+double DecisionEngine::calc_seg_down_time(double t_start, double BR, double SD, double** bw_trace){
+  int N_0;
+  double seg_size = BR * SD; // kbits
+  double down_time = 0;
+  // calculate N_0
+  N_0 = 0;
+  while(t_start > bw_trace[N_0][0]) N_0++;
+  down_time = seg_size/bw_trace[N_0][1];
+  if(down_time <= (bw_trace[N_0][0] - t_start)){
+    return down_time;
+  }
+  seg_size -= (bw_trace[N_0][0] - t_start)*bw_trace[N_0][1];
+  down_time =  (bw_trace[N_0][0] - t_start);
+  N_0 ++;
+  while((seg_size / bw_trace[N_0][1]) > (bw_trace[N_0][0] - bw_trace[N_0-1][0])){
+    seg_size -= bw_trace[N_0][1]*(bw_trace[N_0][0] - bw_trace[N_0-1][0]);
+    down_time +=  (bw_trace[N_0][0] - bw_trace[N_0-1][0]);    
+    N_0 ++;
+  }
+  down_time += seg_size / bw_trace[N_0][1];
+  return down_time;
+}
+// for real bandwidth trace
+void DecisionEngine::down_next_segment_2(int index){
   // request and receive tiles' versions
   // calculate download metrics and update buffer
-  seg_down_time[index] = seg_br[index]*1.0*(INTER*1.0/FPS) / seg_thrp[index];
+  // throughput 
+  if(index==0)
+    seg_down_start_time[index] = 0;
+  else
+    seg_down_start_time[index] = seg_down_start_time[index-1] + seg_down_time[index-1] + time_to_next_request[index-1]; 
+  seg_down_time[index] = calc_seg_down_time(seg_down_start_time[index], seg_br[index],INTER*1.0/FPS, bw_trace);
+  seg_thrp[index] = seg_br[index]*1.0*(INTER*1.0/FPS) / seg_down_time[index];
   if(index < BUFF/INTER){
-    buff_level[index] += INTER*1.0/FPS;
+    if(index == 0)
+      buff_level[index] =  INTER*1.0/FPS;
+    else
+      buff_level[index] = buff_level[index-1] + INTER*1.0/FPS;
     stall_time[index] = 0;
+    last_frame_id[index] = 0;
   }
   else{
     if(BUFFERING_STATE == false){
@@ -325,6 +376,49 @@ void DecisionEngine::down_next_segment(int index){
       buff_level[index] = buff_level[index-1] + INTER*1.0/FPS - seg_down_time[index] + stall_time[index];
       if(stall_time[index] > 0)
         BUFFERING_STATE = true;
+      // update last played frame
+      last_frame_id[index] = last_frame_id[index-1]+ (int)(min(seg_down_time[index], buff_level[index-1]) * FPS);
+    }else{
+      stall_time[index] = seg_down_time[index];
+      buff_level[index] += INTER*1.0/FPS;
+    }
+  } 
+  // switch to normal state after a rebuffering
+  if(BUFFERING_STATE == true && buff_level[index] == B_max)
+    BUFFERING_STATE = false; 
+  time_to_next_request[index] = 0;
+  // Ghent method
+  if(TILE_SELECT_METHOD == 6 || TILE_SELECT_METHOD == 10){
+    if(BUFFERING_STATE == false){
+      if(buff_level[index] >= B_cri){
+        last_frame_id[index] += (int)((buff_level[index] - B_cri) * FPS); 
+        buff_level[index] = B_cri;
+        time_to_next_request[index] += (buff_level[index] - B_cri);
+      }
+    }
+  }
+}
+void DecisionEngine::down_next_segment(int index){
+  // request and receive tiles' versions
+  // calculate download metrics and update buffer
+  // throughput 
+  seg_down_time[index] = seg_br[index]*1.0*(INTER*1.0/FPS) / seg_thrp[index];
+  if(index < BUFF/INTER){
+    buff_level[index] += INTER*1.0/FPS;
+    stall_time[index] = 0;
+    last_frame_id[index] = 0;
+  }
+  else{
+    if(BUFFERING_STATE == false){
+      if(buff_level[index-1] < seg_down_time[index])
+        stall_time[index] = seg_down_time[index] - buff_level[index-1];
+      else
+        stall_time[index] = 0;
+      buff_level[index] = buff_level[index-1] + INTER*1.0/FPS - seg_down_time[index] + stall_time[index];
+      if(stall_time[index] > 0)
+        BUFFERING_STATE = true;
+      // update last played frame
+      last_frame_id[index] = last_frame_id[index-1] + (int)(min(seg_down_time[index], buff_level[index-1]) * FPS);
     }else{
       stall_time[index] = seg_down_time[index];
       buff_level[index] += INTER*1.0/FPS;
@@ -333,6 +427,15 @@ void DecisionEngine::down_next_segment(int index){
   // switch to normal state after a rebuffering
   if(BUFFERING_STATE == true && buff_level[index] == B_max)
    BUFFERING_STATE = false; 
+  // Ghent method
+  if(TILE_SELECT_METHOD == 6 || TILE_SELECT_METHOD == 10){
+    if(BUFFERING_STATE == false){
+      if(buff_level[index] >= B_cri){
+        last_frame_id[index] += (int)((buff_level[index] - B_cri) * FPS); 
+        buff_level[index] = B_cri;
+      }
+    }
+  }
 }
 void DecisionEngine::calc_result(int NO_SEG){
   int index, i, j, num1, num2, num;
@@ -663,7 +766,7 @@ void DecisionEngine::thrp_estimator(int index){
   }
 }
 void DecisionEngine::vp_estimator(int index){
-  int i, last_frame_id, VP_EST_WIN;
+  int i, VP_EST_WIN;
   double v_phi;
   double v_theta;
   int delta_phi, delta_theta;;
@@ -718,18 +821,18 @@ void DecisionEngine::vp_estimator(int index){
         // angular speed
         ang_speed[index] = 0;
       }else{
-        last_frame_id = index * INTER - BUFF;
-        cur_vp[index][0] = htrace[last_frame_id][0];
-        cur_vp[index][1] = htrace[last_frame_id][1];
+        //last_frame_id = index * INTER - BUFF;
+        cur_vp[index][0] = htrace[last_frame_id[index-1]][0];
+        cur_vp[index][1] = htrace[last_frame_id[index-1]][1];
         // calculate estimation errors 
         // phi
-        est_err[index][0] = -est_frame_vp[last_frame_id][0] + htrace[last_frame_id][0];
+        est_err[index][0] = -est_frame_vp[last_frame_id[index-1]][0] + htrace[last_frame_id[index-1]][0];
         if(est_err[index][0] < -180)
           est_err[index][0] += 360;
         else if(est_err[index][0] > 180)
           est_err[index][0] -= 360;
         // theta
-        est_err[index][1] = - est_frame_vp[last_frame_id][1] + htrace[last_frame_id][1];
+        est_err[index][1] = - est_frame_vp[last_frame_id[index-1]][1] + htrace[last_frame_id[index-1]][1];
         if(est_err[index][1] < -90)
           est_err[index][1] += 180;
         else if(est_err[index][1] > 90)
@@ -737,36 +840,36 @@ void DecisionEngine::vp_estimator(int index){
         //
         // calculate move speed
         // phi
-        if(last_frame_id >= VP_EST_WIN){
-          delta_phi = htrace[last_frame_id][0] - htrace[last_frame_id-VP_EST_WIN][0];
+        if(last_frame_id[index-1] >= VP_EST_WIN){
+          delta_phi = htrace[last_frame_id[index-1]][0] - htrace[last_frame_id[index-1]-VP_EST_WIN][0];
         }
         else{
-          delta_phi = htrace[last_frame_id][0] - htrace[0][0];
+          delta_phi = htrace[last_frame_id[index-1]][0] - htrace[0][0];
         }
         if(delta_phi < -180)
           delta_phi += 360;
         else
           if(delta_phi > 180)
             delta_phi -= 360;
-        if(last_frame_id == 0)
+        if(last_frame_id[index-1] == 0)
           speed[index][0] = 0;
         else
-          speed[index][0] = delta_phi/(1.0 * ((last_frame_id >= VP_EST_WIN)?VP_EST_WIN:last_frame_id));
+          speed[index][0] = delta_phi/(1.0 * ((last_frame_id[index-1] >= VP_EST_WIN)?VP_EST_WIN:last_frame_id[index-1]));
         // theta
-        if(last_frame_id >= VP_EST_WIN)
-          delta_theta = htrace[last_frame_id][1] - htrace[last_frame_id-VP_EST_WIN][1];
+        if(last_frame_id[index-1] >= VP_EST_WIN)
+          delta_theta = htrace[last_frame_id[index-1]][1] - htrace[last_frame_id[index-1]-VP_EST_WIN][1];
         else
-          delta_theta = htrace[last_frame_id][1] - htrace[0][1];
+          delta_theta = htrace[last_frame_id[index-1]][1] - htrace[0][1];
         // printf("delta_theta=%d\n", delta_theta);
         if(delta_theta < -90)
           delta_theta += 180;
         else
           if(delta_theta > 90)
             delta_theta -= 180;
-        if(last_frame_id == 0)
+        if(last_frame_id[index-1] == 0)
           speed[index][1] = 0;
         else
-          speed[index][1] = delta_theta/(1.0 * ((last_frame_id >= VP_EST_WIN)?VP_EST_WIN:last_frame_id));
+          speed[index][1] = delta_theta/(1.0 * ((last_frame_id[index-1] >= VP_EST_WIN)?VP_EST_WIN:last_frame_id[index-1]));
 
         // estimate viewport 
         for(i=0; i < INTER; i++){
@@ -784,7 +887,6 @@ void DecisionEngine::vp_estimator(int index){
             est_frame_vp[index * INTER + i][1] += 90;
           // printf("(%d,%d) - (%d, %d)\n", est_frame_vp[index * INTER + i][0], est_frame_vp[index * INTER + i][1], htrace[index * INTER + i][0],htrace[index * INTER + i][1]);
           est_err_ang[index*INTER+i] = acos(sin(htrace[index*INTER+i][1]*M_PI/180) * sin(est_frame_vp[index*INTER+i][1]*M_PI/180) + cos(htrace[index*INTER+i][1]*M_PI/180) * cos(est_frame_vp[index*INTER+i][1]*M_PI/180) * cos(abs(est_frame_vp[index*INTER+i][0] - htrace[index*INTER+i][0])*M_PI/180)) / M_PI * 180;
-          if(index >= 3)
             printf("(%d,%d) - (%d, %d) %.2f\n", est_frame_vp[index * INTER + i][0], est_frame_vp[index * INTER + i][1], htrace[index * INTER + i][0],htrace[index * INTER + i][1], est_err_ang[index*INTER+i]);
         }
         est_vp[index] = est_frame_vp[index * INTER];
@@ -825,7 +927,7 @@ int* DecisionEngine::DASH(int index){
 int* DecisionEngine::EXT_ALL(int index, int ext_width){
   int* vmask = NULL;
   decide_width[index] = ext_width;
-  if(index >  BUFF / INTER){
+  if(index >=  BUFF / INTER){
     vmask = get_visible_tile(est_vp[index]);
     vmask = extVmask(vmask, No_face, No_tile_h, No_tile_v, ext_width);
     if(index==5 && ext_width == 0){
@@ -1048,8 +1150,8 @@ int* DecisionEngine::ISM(int index){
       tileVer[width] = ISM(index, width);
     }
     // showTileVersion(tileVer[width], No_tile_h, No_tile_v);
-    tmp_vp[0] = est_frame_vp[index * INTERVAL][0] + est_err[index][0];
-    tmp_vp[1] = est_frame_vp[index * INTERVAL][1] + est_err[index][1];
+    tmp_vp[0] = est_frame_vp[index * INTERVAL][0];
+    tmp_vp[1] = est_frame_vp[index * INTERVAL][1];
     if(tmp_vp[0] >= 180)
       tmp_vp[0] -= 360;
     if(tmp_vp[0] < -180)
@@ -1122,8 +1224,8 @@ int* DecisionEngine::ISM(int index, int ext_width){
   // calculate viewport-psnr given 'tileVer'
   int* tmp_vp = (int*) malloc(2 * sizeof(int));
   // first frame & last frame
-  tmp_vp[0] = est_frame_vp[index * INTERVAL][0] + est_err[index][0];
-  tmp_vp[1] = est_frame_vp[index * INTERVAL][1] + est_err[index][1];
+  tmp_vp[0] = est_frame_vp[index * INTERVAL][0];
+  tmp_vp[1] = est_frame_vp[index * INTERVAL][1];
   if(tmp_vp[0] >= 180)
     tmp_vp[0] -= 360;
   if(tmp_vp[0] < -180)
@@ -1183,8 +1285,8 @@ int* DecisionEngine::ISM(int index, int ext_width){
         // calculate viewport-psnr given 'tileVer'
         int tmp_vp[2];
         // first frame & last frame
-        tmp_vp[0] = est_frame_vp[index * INTERVAL][0] + est_err[index][0];
-        tmp_vp[1] = est_frame_vp[index * INTERVAL][1] + est_err[index][1];
+        tmp_vp[0] = est_frame_vp[index * INTERVAL][0];
+        tmp_vp[1] = est_frame_vp[index * INTERVAL][1];
         if(tmp_vp[0] >= 180)
           tmp_vp[0] -= 360;
         if(tmp_vp[0] < -180)
@@ -1247,8 +1349,8 @@ int* DecisionEngine::ISM(int index, int ext_width){
       }
       // calculate viewport-psnr given 'tileVer'
       // first frame & last frame
-      tmp_vp[0] = est_frame_vp[index * INTERVAL][0] + est_err[index][0];
-      tmp_vp[1] = est_frame_vp[index * INTERVAL][1] + est_err[index][1];
+      tmp_vp[0] = est_frame_vp[index * INTERVAL][0];
+      tmp_vp[1] = est_frame_vp[index * INTERVAL][1];
       if(tmp_vp[0] >= 180)
         tmp_vp[0] -= 360;
       if(tmp_vp[0] < -180)
@@ -1337,8 +1439,8 @@ int* DecisionEngine::ISM(int index, int ext_width){
       //
       // calculate viewport-psnr given 'tileVer'
       // first frame & last frame
-      tmp_vp[0] = est_frame_vp[index * INTERVAL][0] + est_err[index][0];
-      tmp_vp[1] = est_frame_vp[index * INTERVAL][1] + est_err[index][1];
+      tmp_vp[0] = est_frame_vp[index * INTERVAL][0];
+      tmp_vp[1] = est_frame_vp[index * INTERVAL][1];
       if(tmp_vp[0] >= 180)
         tmp_vp[0] -= 360;
       if(tmp_vp[0] < -180)
@@ -1414,8 +1516,8 @@ int* DecisionEngine::ISM(int index, int ext_width){
         }
         // calculate viewport-psnr given 'tileVer'
         // first frame & last frame
-        tmp_vp[0] = est_frame_vp[index * INTERVAL][0] + est_err[index][0];
-        tmp_vp[1] = est_frame_vp[index * INTERVAL][1] + est_err[index][1];
+        tmp_vp[0] = est_frame_vp[index * INTERVAL][0];
+        tmp_vp[1] = est_frame_vp[index * INTERVAL][1];
         if(tmp_vp[0] >= 180)
           tmp_vp[0] -= 360;
         if(tmp_vp[0] < -180)
@@ -3879,6 +3981,88 @@ void DecisionEngine::write_result_6(int NO_SEG, int HTRACE, int DASH_VER){
   fclose(log_tile_ver_linear);
   fclose(log_dec);
 }
+void DecisionEngine::write_result_8(int NO_SEG, int HTRACE, int bwtrace_id){
+  int jj=0; // frame id
+  double BR = 0;
+  int tid;
+  char out_dir[] = "result";
+  char fname[1024];
+  FILE* log_tile_ver, *log_tile_ver_linear, *log_dec, *log_frame_psnr;
+  // generate log files
+  sprintf(fname, "%s/video_%s/%dx%d/realtrace/realtrace/log_tile_ver_TRACE_%d_BWTRACE_%d_METHOD_%d_INTER_%d_BUFF_%d_EST_%d.txt",out_dir,metadata->video_info.name.c_str(),W,H, HTRACE, bwtrace_id, TILE_SELECT_METHOD, INTER, BUFF, VP_EST_METHOD);
+  // printf("#%s\n", fname);
+  log_tile_ver = fopen(fname, "w");
+  sprintf(fname, "%s/video_%s/%dx%d/realtrace/realtrace/log_tile_ver_linear_TRACE_%d_BWTRACE_%d_METHOD_%d_INTER_%d_BUFF_%d_EST_%d.txt",out_dir,metadata->video_info.name.c_str(),W,H,HTRACE, bwtrace_id, TILE_SELECT_METHOD, INTER, BUFF, VP_EST_METHOD);
+  log_tile_ver_linear = fopen(fname, "w");
+  // printf("#%s\n", fname);
+  sprintf(fname, "%s/video_%s/%dx%d/realtrace/realtrace/log_dec_TRACE_%d_BWTRACE_%d_METHOD_%d_INTER_%d_BUFF_%d_EST_%d.txt",out_dir,metadata->video_info.name.c_str(),W,H,HTRACE, bwtrace_id,TILE_SELECT_METHOD, INTER, BUFF, VP_EST_METHOD);
+  log_dec = fopen(fname, "w");
+  sprintf(fname, "%s/video_%s/%dx%d/realtrace/realtrace/log_frame_TRACE_%d_BWTRACE_%d_METHOD_%d_INTER_%d_BUFF_%d_EST_%d.txt",out_dir,metadata->video_info.name.c_str(),W,H,HTRACE, bwtrace_id, TILE_SELECT_METHOD, INTER, BUFF, VP_EST_METHOD);
+  // printf("#%s\n", fname);
+  log_frame_psnr = fopen(fname, "w");
+  if(log_tile_ver == NULL || log_tile_ver_linear == NULL || log_dec == NULL){
+    cout << "#[write_result] Cannot open log files\n";
+    cout << fname << endl;
+    exit(1);
+  }
+  // if(TILE_SELECT_METHOD > 1){
+    fprintf(log_dec, "id\testThrp(kbps)\tbitrate(kbps)\tvp-bitrate(kbps)\tvp-psnr(dB)\tcalcTime(ms)\text_width\n");
+    fprintf(log_frame_psnr, "fid\tdecid\test_vp_psnr\tphi\ttheta\test_phi\test_theta\terr_phi\terr_theta\text_width\n");
+    for(int ii=0; ii < NO_SEG; ii++){
+      fprintf(log_tile_ver, "\nseg #%d calcTime: %d(ms)\n", ii, proc_time[ii]);
+      for(int i=0; i < No_tile_v; i++){
+        for(int j=0; j < No_tile_h; j++){
+          fprintf(log_tile_ver, "%d ",tile_ver[ii][i * No_tile_h + j]);
+          fprintf(log_tile_ver_linear, "%d ",tile_ver[ii][i * No_tile_h + j]);
+        }
+        fprintf(log_tile_ver, "\n");
+      }
+      fprintf(log_tile_ver_linear, "\n");
+      fprintf(log_dec, "%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%d\t", ii, est_seg_thrp[ii], seg_br[ii], vp_br[ii], seg_vp_psnr[ii], proc_time[ii]/1000.0, decide_width[ii]);
+      fprintf(log_dec, "%.2f\t", seg_thrp[ii]);
+      fprintf(log_dec, "%.2f\t", buff_level[ii]);
+      fprintf(log_dec, "%.2f\t", seg_down_time[ii]);
+      fprintf(log_dec, "%.2f\t", time_to_next_request[ii]);
+      fprintf(log_dec, "%d\t", last_frame_id[ii]);
+      fprintf(log_dec, "\n");
+      // calculate viewport psnr of frames in this interval
+      // decide the adaptation result of this segment
+      for(int k=0; k < INTER; k++){
+        // printf("#frame #%d\n", ii * INTER + k);
+        // double vp_psnr = est_vp_psnr(TILE_SEG_MSE[ii], No_tile, tile_ver[ii], htrace[ii * INTER + k]);
+        fprintf(log_frame_psnr, "%d\t%d\t%.2f\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%.2f\t%d\t", ii * INTER + k, ii, vpsnr[ii * INTER + k], htrace[ii*INTER +k][0], htrace[ii*INTER +k][1], est_frame_vp[ii*INTER + k][0], est_frame_vp[ii*INTER + k][1], est_err_frame[ii*INTER + k][0], est_err_frame[ii*INTER +k][1], decide_width[ii], seg_br[ii], visiTileOut[ii*INTER +k]);
+        for(int j=0; j < NO_VER; j++)
+          fprintf(log_frame_psnr, "%.2f\t", lowQLPixelPercent[ii*INTER+k][j]);
+        fprintf(log_frame_psnr, "%d\t%d\t%.2f\t%.2f\t", ext_tile[ii], useful_ext_tile[ii*INTER+k], useful_ext_tile_percent[ii*INTER+k] * 100, avg_visi_tile_ver[ii*INTER+k]);
+        fprintf(log_frame_psnr, "%.2f\t", s_ver[ii*INTER+k]);
+        fprintf(log_frame_psnr, "%.2f\t", avg_ext_tile_ver[ii*INTER+k]);
+        fprintf(log_frame_psnr, "%.2f\t", ext_tile_br[ii*INTER+k]);
+        fprintf(log_frame_psnr, "%.2f\t", est_err_ang[ii*INTER+k]);
+        fprintf(log_frame_psnr, "%.2f\t", visiTileOut_percent[ii*INTER+k]);
+        fprintf(log_frame_psnr, "%.2f\t", visiTileOut_br[ii*INTER+k]);
+        fprintf(log_frame_psnr, "%.2f\t", ext_tile_br_useful[ii*INTER+k]);
+        fprintf(log_frame_psnr, "%.2f\t", useful_ext_tile_br[ii*INTER+k]);
+        fprintf(log_frame_psnr, "\n");
+      }
+      fflush(log_tile_ver);
+      fflush(log_tile_ver_linear);
+      fflush(log_dec);
+      fflush(log_frame_psnr);
+    }
+  // }else{//DASH
+  //   fprintf(log_frame_psnr, "fid\tdecid\tver\tbitrate\test_vp_psnr\n");
+  //   for(int ii=0; ii < NO_SEG; ii++){
+  //     for(int k=0; k < INTER; k++){
+  //       fprintf(log_frame_psnr, "%d\t%d\t%.2f\t%d\t%.2f\n", ii * INTER + k, ii, DASH_SEG_PSNR[ii][tile_ver[ii][0]],tile_ver[ii][0], DASH_SEG_BR[ii][tile_ver[ii][0]]);
+  //     }
+  //   }
+  //   fflush(log_frame_psnr);
+  // }
+  fclose(log_frame_psnr);
+  fclose(log_tile_ver);
+  fclose(log_tile_ver_linear);
+  fclose(log_dec);
+}
 void DecisionEngine::write_result_7(int NO_SEG, int HTRACE, int BW){
   int jj=0; // frame id
   double BR = 0;
@@ -4160,8 +4344,20 @@ int* DecisionEngine::ISM_ext(int index){
                       }
                       // compute viewport PSNR
                       vpPSNR = 0;
-                      for(j=0; j < INTER; j++)
-                        vpPSNR += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, est_frame_vp[index * INTER + j]);
+                      int tmp_vp[2];
+                      for(j=0; j < INTER; j++){
+                        tmp_vp[0] = est_frame_vp[index * INTER + j][0] + est_err[index][0] * j * 1.0 / (INTER -1);
+                        tmp_vp[1] = est_frame_vp[index * INTER + j][1] + est_err[index][1] * j * 1.0 / (INTER -1);
+                        if(tmp_vp[0] > 180)
+                          tmp_vp[0] -= 360;
+                        if(tmp_vp[0] <= -180)
+                          tmp_vp[0] += 360;
+                        if(tmp_vp[1] > 90)
+                          tmp_vp[1] = 90;
+                        if(tmp_vp[1] < -90)
+                          tmp_vp[1] = -90;
+                        vpPSNR += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
+                      }
                       if(vpPSNR > max_vpPSNR){
                         //for(j=0; j < No_tile; j++)
                         //  ret[j] = tileVer[j];
@@ -4216,6 +4412,11 @@ int* DecisionEngine::OPTIMAL(int index){
   // calculate tiles' weights
   for(i=0; i < No_tile; i++){
     w[i] = 0;
+  }
+  if(index==0){
+    for(i=0; i < No_tile; i++)
+      tileVer[i] = 0;
+    return tileVer;
   }
   for(j=0; j < INTER; j++){
     visi_pixel = get_visible_pixel(htrace[index*INTER+j]); 

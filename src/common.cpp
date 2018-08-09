@@ -31,8 +31,22 @@
 #include <iostream>
 #include <fstream>
 using namespace std;
-
-/**
+double max(double a, double b){
+  if(a >= b) return a;
+  return b;
+}
+double min(double a, double b){
+  if(a <= b) return a;
+  return b;
+}
+int min(int a, int b){
+  if(a <= b) return a;
+  return b;
+}
+int max(int a, int b){
+  if(a >= b) return a;
+  return b;
+}/**
  * Compute the time difference for two \a timeval data structure, i.e.,
  * \a tv1 - \a tv2.
  *
@@ -290,7 +304,18 @@ run_cfg load_run_cfg(const char* cfg){
       }
       printf("#[load_run_info] no_method=%d\n", config.METHOD_NUM);
     }
-    if(key.compare("BANDWIDTH")==0){
+    if(key.compare("BWTRACE")==0){
+      // printf("%sa\n", val_str.c_str());
+      config.BWTRACE_NUM = 0;
+      while((pos=val_str.find(deli)) != std::string::npos){
+        token = val_str.substr(0, pos);
+        config.BWTRACE_LIST.push_back((int) std::stod(token));
+        // cout << std::stod(token) << endl;
+        config.BWTRACE_NUM++;
+        val_str.erase(0, pos + deli.length());
+      }
+    }
+if(key.compare("BANDWIDTH")==0){
       // printf("%sa\n", val_str.c_str());
       config.BW_NUM = 0;
       while((pos=val_str.find(deli)) != std::string::npos){
