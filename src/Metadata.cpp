@@ -71,8 +71,8 @@ int main(int argc, char* argv[]){
   int vp[] = {-166 + 360, 16};
   int vp_W = 960;
   int vp_H = 960;
-  int FRAME = 864;
-  int INTER = 24;
+  int FRAME = 1792;
+  int INTER = 32;
   int BUFF = INTER;
   int htrace_id = 1;
   int HTRACE_NUM = 300;
@@ -80,9 +80,22 @@ int main(int argc, char* argv[]){
   std::vector<int> tileList = {15, 22};
   int* pixel = meta.video_info.tile[TILING].pixel[vp[0]][vp[1]+90];
   double* tileWeight = new double[No_tile];
+  // for(i=0; i < tileList.size(); i++){
+  //   tid = tileList[i];
+  //   cout << "tid: " << tid << endl;
+  //   for(j = 0; j < meta.video_info.NO_VER; j++){
+  //     printf("%.2f\t", meta.video_info.tile[TILING].TILE_SEG_MSE[INTER_ID][index][tid][j]);
+  //   }
+  //   printf("\n");
+  // }
+  int** est_frame_vp;
+  for(htrace_id = 0; htrace_id < HTRACE_NUM; htrace_id++){
+//  for(htrace_id = 94; htrace_id < 95; htrace_id++){
+    est_frame_vp = meta.est_head_trace(htrace_id, FRAME, INTER, BUFF);
+  }
+  exit(1);
   for(tid=0; tid < No_tile; tid++)
     tileWeight[tid] = pixel[tid] * 1.0 / (vp_W * vp_H);
-
   // // show tiles' psnr
   printf("#vmask\n");
   for(tid=0; tid < No_tile; tid++){
@@ -157,18 +170,6 @@ int main(int argc, char* argv[]){
     if((tid+1)%8==0)
       printf("\n");
   }
-  // for(i=0; i < tileList.size(); i++){
-  //   tid = tileList[i];
-  //   cout << "tid: " << tid << endl;
-  //   for(j = 0; j < meta.video_info.NO_VER; j++){
-  //     printf("%.2f\t", meta.video_info.tile[TILING].TILE_SEG_MSE[INTER_ID][index][tid][j]);
-  //   }
-  //   printf("\n");
-  // }
-  // int** est_frame_vp;
-  // for(htrace_id = 0; htrace_id < HTRACE_NUM; htrace_id++){
-  //   est_frame_vp = meta.est_head_trace(htrace_id, FRAME, INTER, BUFF);
-  // }
   printf("ROI: %.2f\nBellLab: %.2f\n Ghent: %.2f\nprob360: %.2f\n", meta.calc_s_version(tileVer_ROI, tileWeight, No_tile), meta.calc_s_version(tileVer_BellLab, tileWeight, No_tile), meta.calc_s_version(tileVer_Ghent, tileWeight, No_tile), meta.calc_s_version(tileVer_prob360, tileWeight, No_tile));
   printf("ROI: %.2f\nBellLab: %.2f\n Ghent: %.2f\nprob360: %.2f\n", meta.calc_avg_version(tileVer_ROI, tileWeight, No_tile), meta.calc_avg_version(tileVer_BellLab, tileWeight, No_tile), meta.calc_avg_version(tileVer_Ghent, tileWeight, No_tile), meta.calc_avg_version(tileVer_prob360, tileWeight, No_tile));
   for(j = 0; j < meta.video_info.NO_VER; j++){
@@ -457,102 +458,100 @@ int Metadata::load_headtrace_info(){
   closedir(dirp);
   return 0;
 }
-int** Metadata::est_head_trace(int htrace_id, int FRAME, int INTER, int BUFF){
+int** Metadata::est_head_trace(int htrace_id, int FRAME, int INTER,  int BUFF){
   int** htrace = video_info.htrace.trace[htrace_id];
   int** est_frame_vp = init2dArrayInt(FRAME, 2);
   int** est_err = init2dArrayInt(FRAME, 2);
+  double* est_err_ang = new double[FRAME];
   int NO_SEG = FRAME / INTER;
-  double* ang_speed = new double(NO_SEG);
+  double* dist_ang = new double[NO_SEG];
+  double* speed_ang = new double[NO_SEG];
+  double* ang_speed = new double[NO_SEG];
   double** speed = init2dArrayDouble(NO_SEG, 2);
   int** cur_vp = init2dArrayInt(NO_SEG, 2);
   int index, i, j, delta_phi, delta_theta, last_frame_id;
   int VP_EST_WIN = INTER;
   char buff[1024];
+  int FPS = 30;
   // 
   sprintf(buff, "data/head_trace/est/trace_%d_INTER_%d_BUFF_%d.txt", htrace_id, INTER, BUFF);
   FILE* fout = fopen(buff,"w");
-  fprintf(fout, "frame_id\tphi\ttheta\test_phi\test_theta\terr_phi\terr_theta\tspeed\n");
+  fprintf(fout, "frame_id\tphi\ttheta\test_phi\test_theta\terr_phi\terr_theta\tspeed\terr_ang\n");
   // 
   sprintf(buff, "data/head_trace/est/speed_%d_INTER_%d_BUFF_%d.txt", htrace_id, INTER, BUFF);
   FILE* fout2 = fopen(buff, "w");
   for(index = 0; index < NO_SEG; index ++){
-   if(index <= BUFF/INTER){
+   if(index < BUFF/INTER){
     for(i=0; i < INTER; i++){
       est_frame_vp[index * INTER + i][0] = 0;
       est_frame_vp[index * INTER + i][1] = 0;
-      // 
-      est_err[index*INTER + i][0] = htrace[index*INTER + i][0] - est_frame_vp[index*INTER + i][0];
-      if(est_err[index*INTER + i][0] > 180)
-        est_err[index*INTER + i][0] -= 360;
-      if(est_err[index*INTER + i][0] < -180)
-        est_err[index*INTER + i][0] += 360;
-      // 
-      est_err[index*INTER + i][1] = htrace[index*INTER + i][1] - est_frame_vp[index*INTER + i][1];
-      // 
-      fprintf(fout, "%d\t%d\t%d\t%d\t%d\t%d\t%d\n", index*INTER + i, htrace[index*INTER + i][0], htrace[index*INTER + i][1], est_frame_vp[index*INTER + i][0],est_frame_vp[index*INTER + i][1], est_err[index*INTER + i][0],est_err[index*INTER + i][1]);
+      est_err_ang[index*INTER+i] =  acos(sin(htrace[index*INTER+i][1]*M_PI/180) * sin(est_frame_vp[index*INTER+i][1]*M_PI/180) + cos(htrace[index*INTER+i][1]*M_PI/180) * cos(est_frame_vp[index*INTER+i][1]*M_PI/180) * cos(abs(est_frame_vp[index*INTER+i][0] - htrace[index*INTER+i][0])*M_PI/180)) / M_PI * 180;
+
+      fprintf(fout, "%d\t%d\t%d\t%d\t%d\t%.2f\n", index*INTER + i, htrace[index*INTER + i][0], htrace[index*INTER + i][1], est_frame_vp[index*INTER + i][0],est_frame_vp[index*INTER + i][1], est_err_ang[index*INTER + i]);
     }
-    ang_speed[index] = 0;
+    // calculate angular distance between two end-points of an interval
+    dist_ang[index] = acos(sin(htrace[index*INTER+INTER-1][1]*M_PI/180) * sin(htrace[index*INTER][1]*M_PI/180) + cos(htrace[index*INTER+INTER-1][1]*M_PI/180) * cos(htrace[index*INTER][1]*M_PI/180) * cos(abs(htrace[index*INTER+INTER-1][0] - htrace[index*INTER][0])*M_PI/180)) / M_PI * 180;
+    // calculate angular speed during this interval
+    ang_speed[index] = dist_ang[index]/(INTER*1.0/FPS);
   }else{
-      last_frame_id = index * INTER - BUFF;
-      cur_vp[index][0] = htrace[last_frame_id][0];
-      cur_vp[index][1] = htrace[last_frame_id][1];
-      if(last_frame_id >= VP_EST_WIN){
-        delta_phi = htrace[last_frame_id][0] - htrace[last_frame_id-VP_EST_WIN][0];
-      }
-      else{
-        delta_phi = htrace[last_frame_id][0] - htrace[0][0];
-      }
-      if(delta_phi < -180)
-        delta_phi += 360;
-      else
-        if(delta_phi > 180)
-          delta_phi -= 360;
-      if(last_frame_id == 0)
-        speed[index][0] = 0;
-      else
-        speed[index][0] = delta_phi/(1.0 * ((last_frame_id >= VP_EST_WIN)?VP_EST_WIN:last_frame_id));
-      // theta
-      if(last_frame_id >= VP_EST_WIN)
-        delta_theta = htrace[last_frame_id][1] - htrace[last_frame_id-VP_EST_WIN][1];
-      else
-        delta_theta = htrace[last_frame_id][1] - htrace[0][1];
-      // printf("delta_theta=%d\n", delta_theta);
-      if(delta_theta < -90)
-        delta_theta += 180;
-      else
-        if(delta_theta > 90)
-            delta_theta -= 180;
-      if(last_frame_id == 0)
-        speed[index][1] = 0;
-      else
-        speed[index][1] = delta_theta/(1.0 * ((last_frame_id >= VP_EST_WIN)?VP_EST_WIN:last_frame_id));
-      // 
-      ang_speed[index] = sqrt(speed[index][0] * speed[index][0] + speed[index][1] * speed[index][1]);
-      // estimate viewport 
-      for(i=0; i < INTER; i++){
-        est_frame_vp[index * INTER + i][0] = (int) (cur_vp[index][0] + speed[index][0] * (BUFF + i));
-        est_frame_vp[index * INTER + i][1] = (int) (cur_vp[index][1] + speed[index][1] * (BUFF + i));
-        // phi
-        while(est_frame_vp[index * INTER + i][0] >= 180)
-          est_frame_vp[index * INTER + i][0] -= 360;
-        while(est_frame_vp[index * INTER + i][0] < -180)
-          est_frame_vp[index * INTER + i][0] += 360;
-        // theta
-        if(est_frame_vp[index * INTER + i][1] >= 90)
-          est_frame_vp[index * INTER + i][1] = 90;
-        if(est_frame_vp[index * INTER + i][1] <= -90)//
-          est_frame_vp[index * INTER + i][1] = -90;
-        // calculate estimation errors
-        est_err[index*INTER + i][0] = htrace[index*INTER + i][0] - est_frame_vp[index*INTER + i][0];
-        if(est_err[index*INTER + i][0] > 180)
-          est_err[index*INTER + i][0] -= 360;
-        if(est_err[index*INTER + i][0] < -180)
-          est_err[index*INTER + i][0] += 360;
-        // 
-        est_err[index*INTER + i][1] = htrace[index*INTER + i][1] - est_frame_vp[index*INTER + i][1];
-        fprintf(fout, "%d\t%d\t%d\t%d\t%d\t%d\t%d\n", index*INTER + i, htrace[index*INTER + i][0], htrace[index*INTER + i][1], est_frame_vp[index*INTER + i][0],est_frame_vp[index*INTER + i][1], est_err[index*INTER + i][0],est_err[index*INTER + i][1]);
-      }
+    last_frame_id = index * INTER - BUFF;
+    cur_vp[index][0] = htrace[last_frame_id][0];
+    cur_vp[index][1] = htrace[last_frame_id][1];
+    if(last_frame_id >= VP_EST_WIN){
+      delta_phi = htrace[last_frame_id][0] - htrace[last_frame_id-VP_EST_WIN][0];
     }
+    else{
+      delta_phi = htrace[last_frame_id][0] - htrace[0][0];
+    }
+    if(delta_phi < -180)
+      delta_phi += 360;
+    else
+      if(delta_phi > 180)
+        delta_phi -= 360;
+    if(last_frame_id == 0)
+      speed[index][0] = 0;
+    else
+      speed[index][0] = delta_phi/(1.0 * ((last_frame_id >= VP_EST_WIN)?VP_EST_WIN:last_frame_id));
+    // theta
+    if(last_frame_id >= VP_EST_WIN)
+      delta_theta = htrace[last_frame_id][1] - htrace[last_frame_id-VP_EST_WIN][1];
+    else
+      delta_theta = htrace[last_frame_id][1] - htrace[0][1];
+    // printf("delta_theta=%d\n", delta_theta);
+    if(delta_theta < -90)
+      delta_theta += 180;
+    else
+      if(delta_theta > 90)
+        delta_theta -= 180;
+    if(last_frame_id == 0)
+      speed[index][1] = 0;
+    else
+      speed[index][1] = delta_theta/(1.0 * ((last_frame_id >= VP_EST_WIN)?VP_EST_WIN:last_frame_id));
+    // 
+    ang_speed[index] = sqrt(speed[index][0] * speed[index][0] + speed[index][1] * speed[index][1]);
+    // estimatt viewport 
+    for(i=0; i < INTER; i++){
+      est_frame_vp[index * INTER + i][0] = (int) (cur_vp[index][0] + speed[index][0] * (BUFF + i));
+      est_frame_vp[index * INTER + i][1] = (int) (cur_vp[index][1] + speed[index][1] * (BUFF + i));
+      // phi
+      while(est_frame_vp[index * INTER + i][0] >= 180)
+        est_frame_vp[index * INTER + i][0] -= 360;
+      while(est_frame_vp[index * INTER + i][0] < -180)
+        est_frame_vp[index * INTER + i][0] += 360;
+      // theta
+      if(est_frame_vp[index * INTER + i][1] >= 90)
+        est_frame_vp[index * INTER + i][1] = 90;
+      if(est_frame_vp[index * INTER + i][1] <= -90)//
+        est_frame_vp[index * INTER + i][1] = -90;
+      est_err_ang[index*INTER+i] =  acos(sin(htrace[index*INTER+i][1]*M_PI/180) * sin(est_frame_vp[index*INTER+i][1]*M_PI/180) + cos(htrace[index*INTER+i][1]*M_PI/180) * cos(est_frame_vp[index*INTER+i][1]*M_PI/180) * cos(abs(est_frame_vp[index*INTER+i][0] - htrace[index*INTER+i][0])*M_PI/180)) / M_PI * 180;
+
+      fprintf(fout, "%d\t%d\t%d\t%d\t%d\t%.2f\n", index*INTER + i, htrace[index*INTER + i][0], htrace[index*INTER + i][1], est_frame_vp[index*INTER + i][0],est_frame_vp[index*INTER + i][1], est_err_ang[index*INTER + i]);
+    }
+    // calculate angular distance between two end-points of an interval
+    dist_ang[index] = acos(sin(htrace[index*INTER+INTER-1][1]*M_PI/180) * sin(htrace[index*INTER][1]*M_PI/180) + cos(htrace[index*INTER+INTER-1][1]*M_PI/180) * cos(htrace[index*INTER][1]*M_PI/180) * cos(abs(htrace[index*INTER+INTER-1][0] - htrace[index*INTER][0])*M_PI/180)) / M_PI * 180;
+    // calculate angular speed during this interval
+    ang_speed[index] = dist_ang[index]/(INTER*1.0/FPS);
+     }
     // 
     fprintf(fout2, "%d\t%.2f\n", index, ang_speed[index]);
   }
