@@ -84,12 +84,14 @@ class DecisionEngine{
     double* visiTileOut_br;
     double** lowQLPixelPercent; // percentage of pixel of each quality version in the viewport
     int** est_frame_vp;
+    int** est_frame_vp_2;
     int** est_vp;
     int** est_err;
     int** est_err_frame;
     int** cur_vp;
     double** speed;
     double* est_err_ang;
+    double* est_err_ang_2;
     double* avg_visi_tile_ver;
     double* avg_ext_tile_ver;
     double* ext_tile_br;
