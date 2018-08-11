@@ -1,0 +1,25 @@
+#!/usr/local/bin/python
+
+import string
+import re
+import numpy as np
+# variables
+VER_NUM = 7
+TILE_NUM = 64
+tile_arr = np.arange(TILE_NUM)
+
+# read tile info
+for tid in np.nditer(tile_arr):
+    log = "tile_" + tid + ".txt"
+    f = open(log, "r")
+    line = f.readline()
+    p = re.compile('\S+')
+    fid = 0 # frame id
+    while line:
+        arr = p.findall(line)
+        for vid in range(0,VER_NUM): 
+            fsize[tid][fid][vid] = arr[2*vid]
+            fPNSR[tid][fid][vid] = arr[2*vid + 1]
+        fid = fid + 1
+        line = f.readline()
+# calculate R-D of each version
