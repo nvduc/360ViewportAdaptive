@@ -87,6 +87,8 @@ class DecisionEngine{
     int** est_frame_vp_2;
     int** est_frame_vp_ins;
     int** est_frame_vp_ins_2;
+    int** est_frame_vp_err_max_left;
+    int** est_frame_vp_err_max_right;
     int** est_vp;
     int** est_vp_ins;
     int** est_err;
@@ -163,6 +165,7 @@ class DecisionEngine{
     int* OPT_2_ONLY_PHI_ERR_AVG(int index);
     int* OPT_2_ONLY_PHI_ERR_INS(int index);
     int* new_idea(int index);
+    int* EQUAL_THETA_0(int index);
     // 
     int* get_visible_tile(int* vp);
     int* get_visible_pixel(int* vp);

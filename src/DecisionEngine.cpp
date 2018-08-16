@@ -219,6 +219,8 @@ DecisionEngine::DecisionEngine(Metadata* meta, AdaptInfo adaptInfo){
   est_frame_vp_2 = init2dArrayInt(NO_FRAME, 2);
   est_frame_vp_ins = init2dArrayInt(NO_FRAME, 2);
   est_frame_vp_ins_2 = init2dArrayInt(NO_FRAME, 2);
+  est_frame_vp_err_max_left = init2dArrayInt(NO_FRAME, 2);
+  est_frame_vp_err_max_right = init2dArrayInt(NO_FRAME, 2);
   speed = init2dArrayDouble(NO_SEG, 2);
   speed_ins = init2dArrayDouble(NO_SEG, 2);
   for(i=0; i < NO_SEG; i++){
@@ -349,11 +351,9 @@ int* DecisionEngine::get_next_segment(int index){
     case 22:
       tile_ver[index] = new_idea(index);
       break;
-    /*
     case 23:
-      tile_ver[index] = OPT-2_ONLY_PHI_ERR_COMBI(index);
+      tile_ver[index] = EQUAL_THETA_0(index);
       break;
-    */
 }
   /* calculate processing time */
   gettimeofday(&t_end, NULL);
@@ -365,6 +365,59 @@ int* DecisionEngine::get_next_segment(int index){
     if(TILE_SELECT_METHOD == 1) break;
   }
   return tile_ver[index];
+}
+int* DecisionEngine::EQUAL_THETA_0(int index){
+  int* tileVer = new int[No_tile];
+  int* vmask = new int[No_tile];
+  int* tmp;
+  int vp_list[][2] = {{-135,0},{-45,0},{45,0},{135,0}};
+  int NO_VP = 4;
+  int i,j;
+  double totalBR = est_seg_thrp[index];
+  double tmpSum;
+  bool FLAG;
+  decide_width[index] = 0;
+  // mark visibe tiles
+  for(i=0; i < NO_VP; i++){
+    tmp = get_visible_tile(vp_list[i]);
+    for(j=0; j < No_tile; j++)
+      if(i==0)
+        vmask[j] = tmp[j];
+      else{
+        if(tmp[j] == 1)
+          vmask[j] = 1;
+      }
+  }
+  i=0;
+  while(true){
+    tmpSum = 0;
+    for(j=0; j < No_tile; j++)
+      if(vmask[j] == 1)
+        tmpSum += TILE_SEG_BR[index][j][i];
+    if(tmpSum > totalBR || i == NO_VER -1) break;
+    i++;
+  }
+  i = (i==0)?0:(i-1);
+  tmpSum = 0;
+  for(j=0; j < No_tile; j++){
+    if(vmask[j] == 1)
+      tileVer[j] = i;
+    else
+      tileVer[j] = 0;
+    tmpSum += TILE_SEG_BR[index][j][tileVer[j]];
+  }
+  totalBR -= tmpSum; 
+  // allocate unused bandwdith (if any) to visible tiles
+  while(totalBR > 0 && FLAG){
+    FLAG = false;
+    for(j=0; j < No_tile; j++)
+      if(vmask[j] == 1 && tileVer[j] < NO_VER -1 && (TILE_SEG_BR[index][j][tileVer[j] + 1] - TILE_SEG_BR[index][j][tileVer[j]]) < totalBR){
+        totalBR -= (TILE_SEG_BR[index][j][tileVer[j] + 1] - TILE_SEG_BR[index][j][tileVer[j]]);
+        tileVer[j] ++; 
+        FLAG = true;
+      } 
+  } 
+  return tileVer;
 }
 int* DecisionEngine::new_idea(int index){
   int NUM_EXT_PART = 9;
@@ -572,8 +625,8 @@ int* DecisionEngine::new_idea(int index){
                       vpPSNR_oposite = 0;
                       int tmp_vp[2];
                       for(j=0; j < INTER; j++){
-                        tmp_vp[0] = est_frame_vp[index * INTER + j][0] + max_est_err * j * 1.0 / (INTER -1);
-                        tmp_vp[1] = est_frame_vp[index * INTER][1];
+                        tmp_vp[0] = est_frame_vp_err_max_left[index * INTER + j][0];
+                        tmp_vp[1] = est_frame_vp_err_max_left[index * INTER + j][1];
                         if(tmp_vp[0] > 180)
                           tmp_vp[0] -= 360;
                         if(tmp_vp[0] <= -180)
@@ -584,8 +637,8 @@ int* DecisionEngine::new_idea(int index){
                           tmp_vp[1] = -90;
                         vpPSNR += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
                         //
-                        tmp_vp[0] = 2*est_frame_vp[index*INTER][0] - (est_frame_vp[index * INTER + j][0] + max_est_err * j * 1.0 / (INTER -1));
-                        tmp_vp[1] = est_frame_vp[index * INTER][1];
+                        tmp_vp[0] = est_frame_vp_err_max_right[index*INTER+j][0]; 
+                        tmp_vp[1] = est_frame_vp_err_max_right[index*INTER+j][0];
                         if(tmp_vp[0] > 180)
                           tmp_vp[0] -= 360;
                         if(tmp_vp[0] <= -180)
@@ -1627,8 +1680,8 @@ int* DecisionEngine::OPT_2_ONLY_PHI_ALL_AVG(int index){
                       vpPSNR_oposite = 0;
                       int tmp_vp[2];
                       for(j=0; j < INTER; j++){
-                        tmp_vp[0] = est_frame_vp[index * INTER + j][0] + est_err[index][0] * j * 1.0 / (INTER -1);
-                        tmp_vp[1] = est_frame_vp[index * INTER][1];
+                        tmp_vp[0] = est_frame_vp_2[index * INTER + j][0];
+                        tmp_vp[1] = est_frame_vp_2[index * INTER + j][1];
                         if(tmp_vp[0] > 180)
                           tmp_vp[0] -= 360;
                         if(tmp_vp[0] <= -180)
@@ -1639,8 +1692,8 @@ int* DecisionEngine::OPT_2_ONLY_PHI_ALL_AVG(int index){
                           tmp_vp[1] = -90;
                         vpPSNR += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
                         //
-                        tmp_vp[0] = 2*est_frame_vp[index*INTER][0] - (est_frame_vp[index * INTER + j][0] + est_err[index][0] * j * 1.0 / (INTER -1));
-                        tmp_vp[1] = est_frame_vp[index * INTER][1];
+                        tmp_vp[0] = 2*est_frame_vp[index*INTER][0] - est_frame_vp_2[index*INTER+j][0];
+                        tmp_vp[1] = est_frame_vp_2[index * INTER + j][1];
                         if(tmp_vp[0] > 180)
                           tmp_vp[0] -= 360;
                         if(tmp_vp[0] <= -180)
@@ -3066,7 +3119,10 @@ void DecisionEngine::vp_estimator(int index){
           // printf("(%d,%d) - (%d, %d)\n", est_frame_vp[index * INTER + i][0], est_frame_vp[index * INTER + i][1], htrace[index * INTER + i][0],htrace[index * INTER + i][1]);
           est_err_ang[index*INTER+i] = acos(sin(htrace[index*INTER+i][1]*M_PI/180) * sin(est_frame_vp[index*INTER+i][1]*M_PI/180) + cos(htrace[index*INTER+i][1]*M_PI/180) * cos(est_frame_vp[index*INTER+i][1]*M_PI/180) * cos(abs(est_frame_vp[index*INTER+i][0] - htrace[index*INTER+i][0])*M_PI/180)) / M_PI * 180;
             //printf("(%d,%d) - (%d, %d) %.2f\n", est_frame_vp[index * INTER + i][0], est_frame_vp[index * INTER + i][1], htrace[index * INTER + i][0],htrace[index * INTER + i][1], est_err_ang[index*INTER+i]);
-          est_frame_vp_2[index*INTER + i][0] = (int)(est_frame_vp[index*INTER+i][0] + est_err[index][0] * i * 1.0 / (INTER-1));
+          if(est_frame_vp[index*INTER+INTER-1][0] > est_frame_vp[index*INTER][0])
+            est_frame_vp_2[index*INTER + i][0] = (int)(est_frame_vp[index*INTER+i][0] + abs(est_err[index][0]) * i * 1.0 / (INTER-1));
+          else
+            est_frame_vp_2[index*INTER + i][0] = (int)(est_frame_vp[index*INTER+i][0] - abs(est_err[index][0]) * i * 1.0 / (INTER-1));
           est_frame_vp_2[index*INTER + i][1] = (int)(est_frame_vp[index*INTER+i][1] + est_err[index][1] * i * 1.0 / (INTER-1));
           // phi
           while(est_frame_vp_2[index * INTER + i][0] >= 180)
@@ -3094,6 +3150,36 @@ void DecisionEngine::vp_estimator(int index){
             est_frame_vp_ins[index * INTER + i][1] += 90;
           // printf("(%d,%d) - (%d, %d)\n", est_frame_vp_ins[index * INTER + i][0], est_frame_vp_ins[index * INTER + i][1], htrace[index * INTER + i][0],htrace[index * INTER + i][1]);
           est_err_ang_ins[index*INTER+i] = acos(sin(htrace[index*INTER+i][1]*M_PI/180) * sin(est_frame_vp_ins[index*INTER+i][1]*M_PI/180) + cos(htrace[index*INTER+i][1]*M_PI/180) * cos(est_frame_vp_ins[index*INTER+i][1]*M_PI/180) * cos(abs(est_frame_vp_ins[index*INTER+i][0] - htrace[index*INTER+i][0])*M_PI/180)) / M_PI * 180;
+          // estimation with max errors (left)
+          if(est_frame_vp[index*INTER + INTER - 1][0] > est_frame_vp[index*INTER][0])
+            est_frame_vp_err_max_left[index*INTER + i][0] = (int)(est_frame_vp[index*INTER+i][0] + max_est_err * i * 1.0 / (INTER-1));
+          else
+            est_frame_vp_err_max_left[index*INTER + i][0] = (int)(est_frame_vp[index*INTER+i][0] - max_est_err * i * 1.0 / (INTER-1));
+          est_frame_vp_err_max_left[index*INTER + i][1] = (int)(est_frame_vp[index*INTER+i][1]);
+          // phi
+          while(est_frame_vp_err_max_left[index * INTER + i][0] >= 180)
+            est_frame_vp_err_max_left[index * INTER + i][0] -= 360;
+          while(est_frame_vp_err_max_left[index * INTER + i][0] < -180)
+            est_frame_vp_err_max_left[index * INTER + i][0] += 360;
+          // theta
+          while(est_frame_vp_err_max_left[index * INTER + i][1] >= 90)
+            est_frame_vp_err_max_left[index * INTER + i][1] -= 90;
+          while(est_frame_vp_err_max_left[index * INTER + i][1] <= -90)//
+            est_frame_vp_err_max_left[index * INTER + i][1] += 90;
+          // estimation with max errors (right)
+          est_frame_vp_err_max_right[index*INTER + i][0] = (int)(2*est_frame_vp[index*INTER][0] - est_frame_vp_err_max_left[index*INTER+i][0]);
+          est_frame_vp_err_max_right[index*INTER + i][1] = (int)(est_frame_vp[index*INTER][1]);
+          // phi
+          while(est_frame_vp_err_max_right[index * INTER + i][0] >= 180)
+            est_frame_vp_err_max_right[index * INTER + i][0] -= 360;
+          while(est_frame_vp_err_max_right[index * INTER + i][0] < -180)
+            est_frame_vp_err_max_right[index * INTER + i][0] += 360;
+          // theta
+          while(est_frame_vp_err_max_right[index * INTER + i][1] >= 90)
+            est_frame_vp_err_max_right[index * INTER + i][1] -= 90;
+          while(est_frame_vp_err_max_right[index * INTER + i][1] <= -90)//
+            est_frame_vp_err_max_right[index * INTER + i][1] += 90;
+
           // estimation with errors
           est_frame_vp_ins_2[index*INTER + i][0] = (int)(est_frame_vp_ins[index*INTER+i][0] + est_err_ins[index][0] * i * 1.0 / (INTER-1));
           est_frame_vp_ins_2[index*INTER + i][1] = (int)(est_frame_vp_ins[index*INTER+i][1] + est_err_ins[index][1] * i * 1.0 / (INTER-1));
@@ -3108,7 +3194,6 @@ void DecisionEngine::vp_estimator(int index){
           while(est_frame_vp_ins_2[index * INTER + i][1] <= -90)//
             est_frame_vp_ins_2[index * INTER + i][1] += 90;
           est_err_ang_ins_2[index*INTER+i] = acos(sin(htrace[index*INTER+i][1]*M_PI/180) * sin(est_frame_vp_ins_2[index*INTER+i][1]*M_PI/180) + cos(htrace[index*INTER+i][1]*M_PI/180) * cos(est_frame_vp_ins_2[index*INTER+i][1]*M_PI/180) * cos(abs(est_frame_vp_ins_2[index*INTER+i][0] - htrace[index*INTER+i][0])*M_PI/180)) / M_PI * 180;
-
         }
         est_vp[index] = est_frame_vp[index * INTER];
         ang_speed[index] = sqrt(speed[index][0] * speed[index][0] + speed[index][1] * speed[index][1]);
@@ -6258,6 +6343,7 @@ void DecisionEngine::write_result_8(int NO_SEG, int HTRACE, int bwtrace_id){
         fprintf(log_frame_psnr, "%d\t%d\t%.2f\t", est_frame_vp_2[ii*INTER + k][0], est_frame_vp_2[ii*INTER + k][1], est_err_ang_2[ii*INTER+k]);
         fprintf(log_frame_psnr, "%d\t%d\t%.2f\t", est_frame_vp_ins[ii*INTER + k][0], est_frame_vp_ins[ii*INTER + k][1], est_err_ang_ins[ii*INTER+k]);
         fprintf(log_frame_psnr, "%d\t%d\t%.2f\t", est_frame_vp_ins_2[ii*INTER + k][0], est_frame_vp_ins_2[ii*INTER + k][1], est_err_ang_ins_2[ii*INTER+k]);
+        fprintf(log_frame_psnr, "%d\t%d\t", est_frame_vp_err_max_left[ii*INTER + k][0], est_frame_vp_err_max_right[ii*INTER + k][0]);
         /*
         for(int j=0; j < NO_VER; j++)
           fprintf(log_frame_psnr, "%.2f\t", lowQLPixelPercent[ii*INTER+k][j]);
