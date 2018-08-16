@@ -11,7 +11,94 @@
 #include <sys/types.h>
 #include <cstring>
 #include <dirent.h>
+#include <fstream>
 using namespace std;
+#ifdef DEBUG2
+int main(int argc, char* argv[]){
+  const char* video_cfg = argv[1];
+  Metadata meta(video_cfg);
+  const char* log_file = "result/video_yakitori/3840x1920/realtrace/realtrace/log_frame_TRACE_27_BWTRACE_0_METHOD_4_INTER_32_BUFF_32_EST_1.txt";
+  const char* out_file = "result/video_yakitori/3840x1920/visi_tile_TRACE_27_INTER_32_BUFF_32.txt";
+  ofstream fout;
+  fout.open(out_file);
+  vector <double> v;
+  int rows, cols, i, j;
+  int NO_SEG = 56;
+  int INTER = 32;
+  int TILING = 1;
+  int ret = meta.import_matrix_from_txt_file(log_file, v, rows, cols);
+  int **vmask = new int*[INTER];
+  int vp[2];
+  if(ret != 0){
+    return -1;
+  }
+  for(i=0; i < NO_SEG; i++){
+//  for(i=0; i < 1; i++){
+    fout << "#Segment-" << i << "-Actual" << endl;
+    for(j=0; j < INTER; j++){
+      vp[0] = v[((i*INTER + j)+1)*cols + 3];
+      vp[1] =  v[((i*INTER + j)+1)*cols + 4];
+      //
+      vp[0] += (vp[0] < 0)?360:0;
+      vp[1] += 90;
+      vmask[j] = meta.video_info.tile[TILING].vmask[vp[0]][vp[1]]; 
+    }
+    fout << showTileVersionInSeg(vmask, INTER, 8, 8);
+    fout << endl;
+    fout << "EST(no-error)" << endl;
+    for(j=0; j < INTER; j++){
+      vp[0] = v[((i*INTER + j)+1)*cols + 5];
+      vp[1] =  v[((i*INTER + j)+1)*cols + 6];
+      //
+      vp[0] += (vp[0] < 0)?360:0;
+      vp[1] += 90;
+      vmask[j] = meta.video_info.tile[TILING].vmask[vp[0]][vp[1]]; 
+    }
+    fout << showTileVersionInSeg(vmask, INTER, 8, 8);
+    fout << endl;
+    fout << "EST(with-error)" << endl;
+    for(j=0; j < INTER; j++){
+      vp[0] = v[((i*INTER + j)+1)*cols + 8];
+      vp[1] =  v[((i*INTER + j)+1)*cols + 9];
+      //
+      vp[0] += (vp[0] < 0)?360:0;
+      vp[1] += 90;
+      vmask[j] = meta.video_info.tile[TILING].vmask[vp[0]][vp[1]]; 
+    }
+    fout << showTileVersionInSeg(vmask, INTER, 8, 8);
+    fout << endl;
+    // print opposite directions
+    fout << "EST(with-error)-opposite" << endl;
+    for(j=0; j < INTER; j++){
+      vp[0] = 2*v[((i*INTER)+1)*cols + 8] - v[((i*INTER + j)+1)*cols + 8];  
+      vp[1] = v[((i*INTER)+1)*cols + 9];
+      //
+      vp[0] += (vp[0] < 0)?360:0;
+      vp[1] += 90;
+      vmask[j] = meta.video_info.tile[TILING].vmask[vp[0]][vp[1]]; 
+    }
+    fout << showTileVersionInSeg(vmask, INTER, 8, 8);
+    fout << endl;
+    // print opposite errors
+    fout << "error-opposite" << endl;
+    for(j=0; j < INTER; j++){
+      if(v[((i*INTER+INTER-1)+1)*cols + 5] >  v[((i*INTER)+1)*cols + 5]){
+        vp[0] = v[((i*INTER)+1)*cols + 5] - abs(v[((i*INTER)+1)*cols + 5]-v[((i*INTER)+1)*cols + 3])*j*1.0/(INTER-1);
+      }else{
+        vp[0] = v[((i*INTER)+1)*cols + 5] + abs(v[((i*INTER)+1)*cols + 5]-v[((i*INTER)+1)*cols + 3])*j*1.0/(INTER-1);
+      }
+      vp[1] = v[((i*INTER)+1)*cols + 9];
+      //
+      vp[0] += (vp[0] < 0)?360:0;
+      vp[1] += 90;
+      vmask[j] = meta.video_info.tile[TILING].vmask[vp[0]][vp[1]]; 
+    }
+    fout << showTileVersionInSeg(vmask, INTER, 8, 8);
+    fout << endl;
+  }
+  fout.close();
+}
+#endif
 #ifdef DEBUG
 int main(int argc, char* argv[]){
   const char* video_cfg = argv[1];
@@ -286,7 +373,8 @@ int Metadata::load_video_info(const char* video_cfg){
     return -1; 
   }
   // load headtrace' info
-  if(load_headtrace_info() != 0){
+  //if(load_headtrace_info() != 0){
+  if(load_headtrace_info_2() != 0){
     printf("Failed to load head traces\n");
     return -1;
   }
@@ -339,10 +427,12 @@ int Metadata::import_matrix_from_txt_file(const char* filename_X, vector <double
     int i=0;
     getline(file_X, line);
     cols = ReadNumbers( line, v );
-    rows = 1;
+    rows = 0;
+    if(cols > 0)
+      rows = 1;
     // cout << "cols:" << cols << endl;
     while(getline(file_X, line) != 0){
-      ReadNumbers(line, v);
+      cols = ReadNumbers(line, v);
       rows ++;
     }        
     file_X.close();
@@ -356,10 +446,11 @@ int Metadata::import_matrix_from_txt_file(const char* filename_X, vector <double
 int Metadata::ReadNumbers( const string & s, vector <double> & v ){
   istringstream is( s );
   double n;
+  int oriSize = v.size();
   while( is >> n ) {
     v.push_back( n );
   }
-  return v.size();
+  return v.size() - oriSize;
 }
 int Metadata::load_tile_info(){
   int INTER,i,ii,NO_SEG,tid,f,t;
@@ -429,6 +520,34 @@ int Metadata::load_tile_info(){
     }
   }
   return 0;
+}
+int Metadata::load_headtrace_info_2(){ // only phi
+  char buff[1024], buff2[1024];
+  int i,j,trace_id;
+  vector <double> v;
+  int rows, cols;
+  sprintf(buff, "data/head_trace/");
+  DIR* dirp = opendir(buff);
+  struct dirent * dp;
+  //
+  video_info.htrace.trace = init3dArrayInt(video_info.htrace.No_user,video_info.NO_FRAME, 2);
+  trace_id = 0;
+  while ((dp = readdir(dirp)) != NULL) {
+    printf("%s %d\n", dp->d_name, trace_id);
+    if(strstr(dp->d_name, "xyz") == NULL)
+      continue;
+    sprintf(buff2,"%s%s", buff, dp->d_name);
+    if(import_matrix_from_txt_file(buff2, v, rows, cols) != 0)
+     return -1; 
+    for(i=0; i < video_info.NO_FRAME; i++){
+      video_info.htrace.trace[trace_id][i][1] = 0;
+      video_info.htrace.trace[trace_id][i][0] = v[(i+1) * cols];
+    }
+    trace_id ++;
+  }
+  closedir(dirp);
+  return 0;
+
 }
 int Metadata::load_headtrace_info(){
   char buff[1024], buff2[1024];

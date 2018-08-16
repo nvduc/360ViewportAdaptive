@@ -7,17 +7,18 @@ import numpy as np
 
 #read and print log files
 #trace_arr = np.arange(1,62,1)
-trace_arr = np.array([27, 22, 28])
+trace_arr = np.array([27,22])
 #bw_arr = np.array([6000, 9000, 15000, 20000])
 #bw_arr = np.array([3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000, 85000, 9000, 9500, 10000, 10500, 11000, 11500, 12000, 12500, 13000, 13500, 14000, 14500, 15000])
 bwtrace_arr = np.array([0])
-method_arr = np.array([1,3,4,5,6,12,14])
+method_arr = np.array([1,3,4,5,6,12,18,14,22])
 #method_arr = np.array([20, 21])
-mname_arr = np.array(['DASH','ROI', 'OPT-1', 'OPT-2','Ghent', 'Prob360', 'OPTIMAL']) 
+#mname_arr = np.array(['DASH','ROI', 'OPT-1', 'OPT-2','Ghent', 'Prob360','OPT-2-AVG','OPT-2-INS','OPT-2-COMBI','OPT-2-ALL-AVG','OPT-2-ALL-INS','OPT-2-ERR-AVG','OPT-2-ERR-ISN', 'OPTIMAL']) 
+mname_arr = np.array(['DASH','ROI', 'OPT-1', 'OPT-2','Ghent','Prob360','OPT-2-ALL-AVG','OPTIMAL', 'OPT-2-ALL-AVG-MAX']) 
 #mname_arr = np.array(['OPT-1', 'OPT-2'])
 methodNum = len(method_arr)
 inter_arr = np.array([32])
-buff_arr = np.array([32, 96])
+buff_arr = np.array([32])
 video = "yaki_est"
 err = "no"
 dir_loc = "10M"
@@ -33,7 +34,7 @@ p2_seg = np.arange(18,35,1)
 p3_seg = np.arange(42,52,1)
 mov_part_seg = np.concatenate((p1_seg,p2_seg,p3_seg))
 #
-START = 64
+START = 96
 END = 1791 
 FRAME_NO = END - START
 # metrics

@@ -30,6 +30,7 @@
 #include <list>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 using namespace std;
 double max(double a, double b){
   if(a >= b) return a;
@@ -223,6 +224,33 @@ void showTileVersion(int* tile_ver, int No_tile_h, int No_tile_v){
 		}
 		printf("\n");
 	}
+}
+string showTileVersionInSeg(int** tile_ver, int NO_FRAME, int No_tile_h, int No_tile_v){
+  std::stringstream ss;
+  std::string out;
+ int i,j,k, ii;
+ bool FLAG = false;
+ for(i=0; i < No_tile_v; i++){
+   for(j=0; j < NO_FRAME; j++){
+     for(k=0; k < No_tile_h; k++){
+       FLAG = false;
+       if(j>0){
+          if(tile_ver[0][i*No_tile_h+k] == 0 && tile_ver[j][i*No_tile_h+k] == 1)
+            FLAG = true;  
+       }
+       if(!FLAG)
+         ss << tile_ver[j][i*No_tile_h+k] << " "; 
+       else
+         ss << "+" << tile_ver[j][i*No_tile_h+k] << " "; 
+       //printf("%d ", tile_ver[j][i*No_tile_h+k]);
+     }
+     ss << "\t";
+     //printf("\t");
+   }
+   ss << "\n";
+   //printf("\n");
+ }
+ return ss.str();
 }
 void showTileInfo(double* tile_ver, int No_tile_h, int No_tile_v){
   int i,j;

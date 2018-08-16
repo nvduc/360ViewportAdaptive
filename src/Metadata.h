@@ -57,6 +57,7 @@ class Metadata{
     int ReadNumbers( const string & s, vector <double> & v );
     int load_tile_info();
     int load_headtrace_info();
+    int load_headtrace_info_2();
     int** est_head_trace(int htrace_id, int FRAME, int INTER, int BUFF);
     double calc_s_version(int* tileVer, double* tileWeight, int No_tile);
     double calc_avg_version(int* tileVer, double* tileWeight, int No_tile);

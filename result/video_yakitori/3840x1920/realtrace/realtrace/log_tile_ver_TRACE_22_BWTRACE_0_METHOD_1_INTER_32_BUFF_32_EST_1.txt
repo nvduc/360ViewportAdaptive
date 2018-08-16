@@ -1,5 +1,5 @@
 
-seg #0 calcTime: 3(ms)
+seg #0 calcTime: 9(ms)
 0 0 0 0 0 0 0 0 
 0 0 0 0 0 0 0 0 
 0 0 0 0 0 0 0 0 
@@ -9,7 +9,7 @@ seg #0 calcTime: 3(ms)
 0 0 0 0 0 0 0 0 
 0 0 0 0 0 0 0 0 
 
-seg #1 calcTime: 79(ms)
+seg #1 calcTime: 32(ms)
 2 2 2 2 2 2 2 2 
 2 2 2 2 2 2 2 2 
 2 2 2 2 2 2 2 2 
@@ -19,7 +19,7 @@ seg #1 calcTime: 79(ms)
 2 2 2 2 2 2 2 2 
 2 2 2 2 2 2 2 2 
 
-seg #2 calcTime: 72(ms)
+seg #2 calcTime: 18(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -29,7 +29,7 @@ seg #2 calcTime: 72(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #3 calcTime: 72(ms)
+seg #3 calcTime: 18(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -39,7 +39,7 @@ seg #3 calcTime: 72(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #4 calcTime: 73(ms)
+seg #4 calcTime: 16(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -49,7 +49,7 @@ seg #4 calcTime: 73(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #5 calcTime: 71(ms)
+seg #5 calcTime: 16(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -59,7 +59,7 @@ seg #5 calcTime: 71(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #6 calcTime: 72(ms)
+seg #6 calcTime: 17(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -69,7 +69,7 @@ seg #6 calcTime: 72(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #7 calcTime: 73(ms)
+seg #7 calcTime: 16(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -79,7 +79,7 @@ seg #7 calcTime: 73(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #8 calcTime: 72(ms)
+seg #8 calcTime: 19(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
@@ -89,7 +89,7 @@ seg #8 calcTime: 72(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 
-seg #9 calcTime: 71(ms)
+seg #9 calcTime: 18(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -99,7 +99,7 @@ seg #9 calcTime: 71(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #10 calcTime: 69(ms)
+seg #10 calcTime: 14(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -109,7 +109,7 @@ seg #10 calcTime: 69(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #11 calcTime: 74(ms)
+seg #11 calcTime: 23(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -119,7 +119,7 @@ seg #11 calcTime: 74(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #12 calcTime: 73(ms)
+seg #12 calcTime: 17(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -129,7 +129,7 @@ seg #12 calcTime: 73(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #13 calcTime: 23064(ms)
+seg #13 calcTime: 17(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -139,7 +139,7 @@ seg #13 calcTime: 23064(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #14 calcTime: 78(ms)
+seg #14 calcTime: 15(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -149,7 +149,7 @@ seg #14 calcTime: 78(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #15 calcTime: 71(ms)
+seg #15 calcTime: 15(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -159,7 +159,7 @@ seg #15 calcTime: 71(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #16 calcTime: 72(ms)
+seg #16 calcTime: 19(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -169,7 +169,7 @@ seg #16 calcTime: 72(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #17 calcTime: 70(ms)
+seg #17 calcTime: 16(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
@@ -179,7 +179,7 @@ seg #17 calcTime: 70(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 
-seg #18 calcTime: 69(ms)
+seg #18 calcTime: 17(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -189,7 +189,7 @@ seg #18 calcTime: 69(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #19 calcTime: 69(ms)
+seg #19 calcTime: 16(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -199,7 +199,7 @@ seg #19 calcTime: 69(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #20 calcTime: 73(ms)
+seg #20 calcTime: 16(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -209,7 +209,7 @@ seg #20 calcTime: 73(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #21 calcTime: 69(ms)
+seg #21 calcTime: 17(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
@@ -219,7 +219,7 @@ seg #21 calcTime: 69(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 
-seg #22 calcTime: 69(ms)
+seg #22 calcTime: 18(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
@@ -229,7 +229,7 @@ seg #22 calcTime: 69(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 
-seg #23 calcTime: 2560(ms)
+seg #23 calcTime: 16(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
@@ -239,7 +239,7 @@ seg #23 calcTime: 2560(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 
-seg #24 calcTime: 95(ms)
+seg #24 calcTime: 18(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
@@ -249,7 +249,7 @@ seg #24 calcTime: 95(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 
-seg #25 calcTime: 61(ms)
+seg #25 calcTime: 18(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
@@ -259,7 +259,7 @@ seg #25 calcTime: 61(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 
-seg #26 calcTime: 73(ms)
+seg #26 calcTime: 17(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
@@ -269,7 +269,7 @@ seg #26 calcTime: 73(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 
-seg #27 calcTime: 73(ms)
+seg #27 calcTime: 16(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -279,7 +279,7 @@ seg #27 calcTime: 73(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #28 calcTime: 64(ms)
+seg #28 calcTime: 18(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -289,7 +289,7 @@ seg #28 calcTime: 64(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #29 calcTime: 70(ms)
+seg #29 calcTime: 17(ms)
 2 2 2 2 2 2 2 2 
 2 2 2 2 2 2 2 2 
 2 2 2 2 2 2 2 2 
@@ -299,7 +299,7 @@ seg #29 calcTime: 70(ms)
 2 2 2 2 2 2 2 2 
 2 2 2 2 2 2 2 2 
 
-seg #30 calcTime: 72(ms)
+seg #30 calcTime: 17(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -309,7 +309,7 @@ seg #30 calcTime: 72(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #31 calcTime: 89(ms)
+seg #31 calcTime: 16(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -319,7 +319,7 @@ seg #31 calcTime: 89(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #32 calcTime: 26478(ms)
+seg #32 calcTime: 18(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -329,7 +329,7 @@ seg #32 calcTime: 26478(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #33 calcTime: 83(ms)
+seg #33 calcTime: 17(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -339,7 +339,7 @@ seg #33 calcTime: 83(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #34 calcTime: 71(ms)
+seg #34 calcTime: 16(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -349,7 +349,7 @@ seg #34 calcTime: 71(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #35 calcTime: 70(ms)
+seg #35 calcTime: 15(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -359,7 +359,7 @@ seg #35 calcTime: 70(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #36 calcTime: 73(ms)
+seg #36 calcTime: 17(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
@@ -369,7 +369,7 @@ seg #36 calcTime: 73(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 
-seg #37 calcTime: 72(ms)
+seg #37 calcTime: 18(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -379,7 +379,7 @@ seg #37 calcTime: 72(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #38 calcTime: 71(ms)
+seg #38 calcTime: 16(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -389,7 +389,7 @@ seg #38 calcTime: 71(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #39 calcTime: 72(ms)
+seg #39 calcTime: 16(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -399,7 +399,7 @@ seg #39 calcTime: 72(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #40 calcTime: 71(ms)
+seg #40 calcTime: 16(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -409,7 +409,7 @@ seg #40 calcTime: 71(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #41 calcTime: 69(ms)
+seg #41 calcTime: 15(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -419,7 +419,7 @@ seg #41 calcTime: 69(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #42 calcTime: 2335(ms)
+seg #42 calcTime: 16(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -429,7 +429,7 @@ seg #42 calcTime: 2335(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #43 calcTime: 74(ms)
+seg #43 calcTime: 16(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -439,7 +439,7 @@ seg #43 calcTime: 74(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #44 calcTime: 82(ms)
+seg #44 calcTime: 18(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -449,7 +449,7 @@ seg #44 calcTime: 82(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #45 calcTime: 69(ms)
+seg #45 calcTime: 15(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
@@ -459,7 +459,7 @@ seg #45 calcTime: 69(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 
-seg #46 calcTime: 89(ms)
+seg #46 calcTime: 16(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -469,7 +469,7 @@ seg #46 calcTime: 89(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #47 calcTime: 70(ms)
+seg #47 calcTime: 16(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -479,7 +479,7 @@ seg #47 calcTime: 70(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #48 calcTime: 73(ms)
+seg #48 calcTime: 16(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
@@ -489,7 +489,7 @@ seg #48 calcTime: 73(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 
-seg #49 calcTime: 70(ms)
+seg #49 calcTime: 18(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
@@ -499,7 +499,7 @@ seg #49 calcTime: 70(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 
-seg #50 calcTime: 70(ms)
+seg #50 calcTime: 16(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
@@ -509,7 +509,7 @@ seg #50 calcTime: 70(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 
-seg #51 calcTime: 27472(ms)
+seg #51 calcTime: 16(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
@@ -519,7 +519,7 @@ seg #51 calcTime: 27472(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 
-seg #52 calcTime: 81(ms)
+seg #52 calcTime: 26(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
@@ -529,7 +529,7 @@ seg #52 calcTime: 81(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 
-seg #53 calcTime: 75(ms)
+seg #53 calcTime: 32(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
@@ -539,7 +539,7 @@ seg #53 calcTime: 75(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 
-seg #54 calcTime: 69(ms)
+seg #54 calcTime: 16(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
@@ -549,7 +549,7 @@ seg #54 calcTime: 69(ms)
 4 4 4 4 4 4 4 4 
 4 4 4 4 4 4 4 4 
 
-seg #55 calcTime: 71(ms)
+seg #55 calcTime: 18(ms)
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 
 3 3 3 3 3 3 3 3 

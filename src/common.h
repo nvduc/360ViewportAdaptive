@@ -2,6 +2,7 @@
 #ifndef __GA_COMMON_H__
 #define __GA_COMMON_H__
 #include <vector>
+#include <string>
 using namespace std;
 long long tvdiff_us(struct timeval *tv1, struct timeval *tv2);
 long long ga_usleep(long long interval, struct timeval *ptv);
@@ -17,6 +18,7 @@ void get_face_tid(int No_face, int No_tile_h, int No_tile_v, int tid, int* face_
 void showArrayInt(int *arr, int N);
 void showArrayDouble(double *arr, int N);
 void showTileVersion(int* tile_ver, int No_tile_h, int No_tile_v);
+string showTileVersionInSeg(int** tile_ver, int NO_FRAME, int No_tile_h, int No_tile_v);
 void showTileInfo(double* info, int No_tile_h, int No_tile_v);
 void getErrorPoint(int phi, int theta, int err, int point_id, int No_point, int* phi_est, int *theta_est);
 FILE* open_file(char*);

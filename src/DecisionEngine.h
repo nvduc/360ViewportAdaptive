@@ -85,13 +85,21 @@ class DecisionEngine{
     double** lowQLPixelPercent; // percentage of pixel of each quality version in the viewport
     int** est_frame_vp;
     int** est_frame_vp_2;
+    int** est_frame_vp_ins;
+    int** est_frame_vp_ins_2;
     int** est_vp;
+    int** est_vp_ins;
     int** est_err;
+    int** est_err_ins;
     int** est_err_frame;
+    int max_est_err;
     int** cur_vp;
     double** speed;
+    double** speed_ins;
     double* est_err_ang;
     double* est_err_ang_2;
+    double* est_err_ang_ins;
+    double* est_err_ang_ins_2;
     double* avg_visi_tile_ver;
     double* avg_ext_tile_ver;
     double* ext_tile_br;
@@ -147,7 +155,15 @@ class DecisionEngine{
     // int* BellLab_v2(int index);
     int* ProbDASH(int index);
     int* OPTIMAL(int index);
-   // 
+    int* OPT_2_ONLY_PHI_AVG(int index);
+    int* OPT_2_ONLY_PHI_INS(int index);
+    int* OPT_2_ONLY_PHI_COMBI(int index);
+    int* OPT_2_ONLY_PHI_ALL_AVG(int index);
+    int* OPT_2_ONLY_PHI_ALL_INS(int index);
+    int* OPT_2_ONLY_PHI_ERR_AVG(int index);
+    int* OPT_2_ONLY_PHI_ERR_INS(int index);
+    int* new_idea(int index);
+    // 
     int* get_visible_tile(int* vp);
     int* get_visible_pixel(int* vp);
     double est_vp_psnr(double** TILE_MSE, int NO_TILE, int* tileVer, int* est_vp);

@@ -210,15 +210,23 @@ DecisionEngine::DecisionEngine(Metadata* meta, AdaptInfo adaptInfo){
   // viewport2
   cur_vp = init2dArrayInt(NO_SEG, 2);
   est_vp = init2dArrayInt(NO_SEG, 2);
+  est_vp_ins = init2dArrayInt(NO_SEG, 2);
+  max_est_err = 0;
   est_err = init2dArrayInt(NO_SEG, 2);
+  est_err_ins = init2dArrayInt(NO_SEG, 2);
   est_err_frame = init2dArrayInt(NO_FRAME, 2);
   est_frame_vp = init2dArrayInt(NO_FRAME, 2);
   est_frame_vp_2 = init2dArrayInt(NO_FRAME, 2);
+  est_frame_vp_ins = init2dArrayInt(NO_FRAME, 2);
+  est_frame_vp_ins_2 = init2dArrayInt(NO_FRAME, 2);
   speed = init2dArrayDouble(NO_SEG, 2);
+  speed_ins = init2dArrayDouble(NO_SEG, 2);
   for(i=0; i < NO_SEG; i++){
     est_err[i][0] = 0;
     est_err[i][1] = 0;
-  }
+    est_err_ins[i][0] = 0;
+    est_err_ins[i][1] = 0;
+}
   // tile version
   tile_ver = init2dArrayInt(NO_SEG, metadata->video_info.tile[TILING].No_tile);
   tile_size = init2dArrayInt(NO_SEG, metadata->video_info.tile[TILING].No_tile);
@@ -248,6 +256,8 @@ DecisionEngine::DecisionEngine(Metadata* meta, AdaptInfo adaptInfo){
   s_ver = new double[NO_FRAME];
   est_err_ang = new double[NO_FRAME];
   est_err_ang_2 = new double[NO_FRAME];
+  est_err_ang_ins = new double[NO_FRAME];
+  est_err_ang_ins_2 = new double[NO_FRAME];
   visiTileOut_percent = new double[NO_FRAME];
   visiTileOut_br = new double[NO_FRAME];
   last_frame_id = new int[NO_FRAME];
@@ -315,7 +325,36 @@ int* DecisionEngine::get_next_segment(int index){
     case 14:
       tile_ver[index] = OPTIMAL(index);
       break;
-  }
+    case 15:
+      tile_ver[index] = OPT_2_ONLY_PHI_AVG(index);
+      break;
+    case 16:
+      tile_ver[index] = OPT_2_ONLY_PHI_INS(index);
+      break;
+    case 17:
+      tile_ver[index] = OPT_2_ONLY_PHI_COMBI(index);
+      break;
+    case 18:
+      tile_ver[index] = OPT_2_ONLY_PHI_ALL_AVG(index);
+      break;
+    case 19:
+      tile_ver[index] = OPT_2_ONLY_PHI_ALL_INS(index);
+      break;
+    case 20:
+      tile_ver[index] = OPT_2_ONLY_PHI_ERR_AVG(index);
+      break;
+    case 21:
+      tile_ver[index] = OPT_2_ONLY_PHI_ERR_INS(index);
+      break;
+    case 22:
+      tile_ver[index] = new_idea(index);
+      break;
+    /*
+    case 23:
+      tile_ver[index] = OPT-2_ONLY_PHI_ERR_COMBI(index);
+      break;
+    */
+}
   /* calculate processing time */
   gettimeofday(&t_end, NULL);
   proc_time[index] = tvdiff_us(&t_end, &t_start);
@@ -327,7 +366,2082 @@ int* DecisionEngine::get_next_segment(int index){
   }
   return tile_ver[index];
 }
+int* DecisionEngine::new_idea(int index){
+  int NUM_EXT_PART = 9;
+  int i[100], j, ii;
+  int EXT_W = 2;
+  double remainBW,remainBW2, max_vpPSNR = 0, vpPSNR,vpPSNR_oposite, max_remainBW;
+  double tmpsum[100];
+  int* tileVer = (int*) malloc(No_tile * sizeof(int));
+  int* ret = (int*) malloc(No_tile * sizeof(int));
+  // 
+  // printf("#[ISM_ext] (%d, %d)\n", est_vp[index][0], est_vp[index][1]);
+  printf("#[new_idea] index=%d\n", index);
+  int* vmask = get_visible_tile(est_vp[index]);
+  if(vmask == NULL){
+    printf("(%d, %d)\n", est_vp[index][0], est_vp[index][1]);
+    exit(1);
+  }
+  int* adapt_area = extVmask2(vmask, No_face, No_tile_h, No_tile_v, EXT_W);
+  int count = 0, count2=0;
+  double sum;
+  int WITH_BREAK = 1;
+  if(index < BUFF/INTER){
+    for(j=0; j < No_tile; j++)
+      ret[j] = 0;
+    return ret;
+  }
+  //
+  // printf("#[ISM_ext]: index=%d est_thrp=%.2f(kbps)\n", index, est_seg_thrp[index]);
+  /* display the adapt area */
+  /*
+     for(j=0; j < No_tile; j++){
+     printf("%d ", adapt_area[j]);
+     if((j+1) % 8 == 0) printf("\n");
+     }
+     */
+  // select the lowest version for background tiles
+  remainBW = est_seg_thrp[index];
+  for(j=0; j < No_tile; j++){
+    if(adapt_area[j] == 0){
+      tileVer[j] = 0;
+      remainBW -= TILE_SEG_BR[index][j][0];
+    }
+  }
+  // loop to find optimal versions of tiles in other areas
+  for(i[0] = 0; i[0] < NO_VER; i[0]++){//1
+    //
+    tmpsum[0] = 0;      
+    for(j=0; j < No_tile; j++){
+      if(adapt_area[j] == 1){
+        tmpsum[0] += TILE_SEG_BR[index][j][i[0]];
+      }
+    }
+    if(tmpsum[0] >= remainBW) break;
+    //
+    for(i[1] = 0; i[1] < NO_VER; i[1]++){//2
+      //
+      tmpsum[1] = 0;
+      for(j=0; j < No_tile; j++){
+        if(adapt_area[j] == 2){
+          tmpsum[1] += TILE_SEG_BR[index][j][i[1]];
+        }
+      }
+      if(tmpsum[0] + tmpsum[1] >= remainBW) break;
+      if(i[1] > i[0]) break;
+      //
+      for(i[2] = 0; i[2] < NO_VER; i[2]++){//3
+        //
+        tmpsum[2] = 0;
+        for(j=0; j < No_tile; j++){
+          if(adapt_area[j] == 3){
+            tmpsum[2] += TILE_SEG_BR[index][j][i[2]];
+          }
+        }
+        if(tmpsum[0] + tmpsum[1] + tmpsum[2] >= remainBW) break;
+        if(i[2] > i[0]) break;
+        //
+        for(i[3] = 0; i[3] < NO_VER; i[3]++){//4
+          //
+          tmpsum[3] = 0;
+          for(j=0; j < No_tile; j++){
+            if(adapt_area[j] == 4){
+              tmpsum[3] += TILE_SEG_BR[index][j][i[3]];
+            }
+          }
+          if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] >= remainBW) break;
+          if(i[3] > i[0]) break;
+          //
+          for(i[4] = 0; i[4] < NO_VER; i[4]++){//5
+            //
+            tmpsum[4] = 0;
+            for(j=0; j < No_tile; j++){
+              if(adapt_area[j] == 5){
+                tmpsum[4] += TILE_SEG_BR[index][j][i[4]];
+              }
+            }
+            if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] >= remainBW) break;
+            if(i[4] > i[0]) break;
+            //
+            for(i[5] = 0; i[5] < NO_VER; i[5]++){//6
+              //
+              tmpsum[5] = 0;
+              for(j=0; j < No_tile; j++){
+                if(adapt_area[j] == 6){
+                  tmpsum[5] += TILE_SEG_BR[index][j][i[5]];
+                }
+              }
+              if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] >= remainBW) break;
+              if(i[5] > i[0] || i[5] > i[1] || i[5] > i[2] || i[5] > i[3] || i[5] > i[4]) break;
+              //if(i[5] > i[0] || i[5] > i[1]) break;
+              //
+              for(i[6] = 0; i[6] < NO_VER; i[6]++){//7
+                //
+                tmpsum[6] = 0;
+                for(j=0; j < No_tile; j++){
+                  if(adapt_area[j] == 7){
+                    tmpsum[6] += TILE_SEG_BR[index][j][i[6]];
+                  }
+                }
+                if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] >= remainBW) break;
+                if(i[6] > i[0] || i[6] > i[1] || i[6] > i[2] || i[6] > i[3] || i[6] > i[4]) break;
+                //if(i[6] > i[0] || i[6] > i[2]) break;
+                //
+                for(i[7] = 0; i[7] < NO_VER; i[7]++){//8
+                  //
+                  tmpsum[7] = 0;
+                  for(j=0; j < No_tile; j++){
+                    if(adapt_area[j] == 8){
+                      tmpsum[7] += TILE_SEG_BR[index][j][i[7]];
+                    }
+                  }
+                  if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] + tmpsum[7] >= remainBW) break;
+                  if(i[7] > i[0] || i[7] > i[1] || i[7] > i[2] || i[7] > i[3] || i[7] > i[4]) break;
+                  //if(i[7] > i[0] || i[7] > i[3]) break;
+                  //
+                  for(i[8] = 0; i[8] < NO_VER; i[8]++){
+                    //
+                    tmpsum[8] = 0;
+                    for(j=0; j < No_tile; j++){
+                      if(adapt_area[j] == 9){
+                        tmpsum[8] += TILE_SEG_BR[index][j][i[8]];
+                      }
+                    }
+                    if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] + tmpsum[7] + tmpsum[8] >= remainBW) break;
+                    if(i[8] > i[0] || i[8] > i[1] || i[8] > i[2] || i[8] > i[3] || i[8] > i[4]) break;
+                    //if(i[8] > i[0] || i[8] > i[4]) break;
+                    count2++;
+                    // assign version for each area
+                    sum = 0;
+                    for(j=0; j < No_tile; j++){
+                      if(adapt_area[j] > 0){
+                        tileVer[j] = i[adapt_area[j]-1];
+                        sum += TILE_SEG_BR[index][j][tileVer[j]];
+                      }
+                    }
+                    //
+                    if(sum <= remainBW){
+                      // using remaining bandwidth (if any) to increase tile versions
+                      remainBW2 = remainBW - sum;
+                      int BREAK_FLAG;
+                      int area_id;
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        //for(area_id = 5; area_id >= 2; area_id --){
+                        for(ii=No_tile-1; ii >= 0; ii--){
+                          if(adapt_area[ii] == 1  && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                            remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                            tileVer[ii] += 1;
+                            BREAK_FLAG = 0;
+                          }
+                        }
+                        //}
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        //for(area_id = 5; area_id >= 2; area_id --){
+                        for(ii=0; ii < No_tile; ii++){
+                          if(adapt_area[ii] >=2 && adapt_area[ii] <=5 && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                            remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                            tileVer[ii] += 1;
+                            BREAK_FLAG = 0;
+                          }
+                        }
+                        //}
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        for(area_id = 6; area_id <= 9; area_id ++){
+                          for(ii=0; ii < No_tile; ii++){
+                            if(adapt_area[ii] == area_id && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                              remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                              tileVer[ii] += 1;
+                              BREAK_FLAG = 0;
+                            }
+                          }
+                        }
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      // compute viewport PSNR
+                      vpPSNR = 0;
+                      vpPSNR_oposite = 0;
+                      int tmp_vp[2];
+                      for(j=0; j < INTER; j++){
+                        tmp_vp[0] = est_frame_vp[index * INTER + j][0] + max_est_err * j * 1.0 / (INTER -1);
+                        tmp_vp[1] = est_frame_vp[index * INTER][1];
+                        if(tmp_vp[0] > 180)
+                          tmp_vp[0] -= 360;
+                        if(tmp_vp[0] <= -180)
+                          tmp_vp[0] += 360;
+                        if(tmp_vp[1] > 90)
+                          tmp_vp[1] = 90;
+                        if(tmp_vp[1] < -90)
+                          tmp_vp[1] = -90;
+                        vpPSNR += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
+                        //
+                        tmp_vp[0] = 2*est_frame_vp[index*INTER][0] - (est_frame_vp[index * INTER + j][0] + max_est_err * j * 1.0 / (INTER -1));
+                        tmp_vp[1] = est_frame_vp[index * INTER][1];
+                        if(tmp_vp[0] > 180)
+                          tmp_vp[0] -= 360;
+                        if(tmp_vp[0] <= -180)
+                          tmp_vp[0] += 360;
+                        if(tmp_vp[1] > 90)
+                          tmp_vp[1] = 90;
+                        if(tmp_vp[1] < -90)
+                          tmp_vp[1] = -90;
+                        vpPSNR_oposite += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
+}
+                      if((vpPSNR + vpPSNR_oposite) > max_vpPSNR){
+                        //for(j=0; j < No_tile; j++)
+                        //  ret[j] = tileVer[j];
+                        std::copy (tileVer, tileVer + No_tile, ret);
+                        max_vpPSNR = vpPSNR + vpPSNR_oposite;
+                        max_remainBW = remainBW2;
+                        if(index==3 && max_vpPSNR >= 42.39){
+                          double total_br = 0;
+                          // printf("[DUC]: remainBW=%.2f\n", remainBW2);
+                          for(j=0; j < No_tile; j++){
+                            total_br += TILE_SEG_BR[index][j][ret[j]];
+                            // printf("%d ", tileVer[j]);
+                            // if((j+1) % 8 == 0) printf("\n");
+                          }
+                          // printf("[DUC]: total_br=%.2f remainBW=%.2f\n", total_br, est_seg_thrp[index] - total_br);
+                        }
+                      }
+                      count++;
+                    }
+                    //
+                  }//9
+                }//8
+              }//7
+            }//6
+          }//5
+        }//4
+      }//3
+    }//2
 
+}
+return ret;
+}
+int* DecisionEngine::OPT_2_ONLY_PHI_ERR_INS(int index){
+  int NUM_EXT_PART = 9;
+  int i[100], j, ii;
+  int EXT_W = 2;
+  double remainBW,remainBW2, max_vpPSNR = 0, vpPSNR,vpPSNR_oposite, max_remainBW;
+  double tmpsum[100];
+  int* tileVer = (int*) malloc(No_tile * sizeof(int));
+  int* ret = (int*) malloc(No_tile * sizeof(int));
+  // 
+  // printf("#[ISM_ext] (%d, %d)\n", est_vp[index][0], est_vp[index][1]);
+  printf("#[OPT_2_ONLY_PHI_ERR_INS] index=%d\n", index);
+  int* vmask = get_visible_tile(est_vp[index]);
+  if(vmask == NULL){
+    printf("(%d, %d)\n", est_vp[index][0], est_vp[index][1]);
+    exit(1);
+  }
+  int* adapt_area = extVmask2(vmask, No_face, No_tile_h, No_tile_v, EXT_W);
+  int count = 0, count2=0;
+  double sum;
+  int WITH_BREAK = 1;
+  if(index < BUFF/INTER){
+    for(j=0; j < No_tile; j++)
+      ret[j] = 0;
+    return ret;
+  }
+  //
+  // printf("#[ISM_ext]: index=%d est_thrp=%.2f(kbps)\n", index, est_seg_thrp[index]);
+  /* display the adapt area */
+  /*
+     for(j=0; j < No_tile; j++){
+     printf("%d ", adapt_area[j]);
+     if((j+1) % 8 == 0) printf("\n");
+     }
+     */
+  // select the lowest version for background tiles
+  remainBW = est_seg_thrp[index];
+  for(j=0; j < No_tile; j++){
+    if(adapt_area[j] == 0){
+      tileVer[j] = 0;
+      remainBW -= TILE_SEG_BR[index][j][0];
+    }
+  }
+  // loop to find optimal versions of tiles in other areas
+  for(i[0] = 0; i[0] < NO_VER; i[0]++){//1
+    //
+    tmpsum[0] = 0;      
+    for(j=0; j < No_tile; j++){
+      if(adapt_area[j] == 1){
+        tmpsum[0] += TILE_SEG_BR[index][j][i[0]];
+      }
+    }
+    if(tmpsum[0] >= remainBW) break;
+    //
+    for(i[1] = 0; i[1] < NO_VER; i[1]++){//2
+      //
+      tmpsum[1] = 0;
+      for(j=0; j < No_tile; j++){
+        if(adapt_area[j] == 2){
+          tmpsum[1] += TILE_SEG_BR[index][j][i[1]];
+        }
+      }
+      if(tmpsum[0] + tmpsum[1] >= remainBW) break;
+      if(i[1] > i[0]) break;
+      //
+      for(i[2] = 0; i[2] < NO_VER; i[2]++){//3
+        //
+        tmpsum[2] = 0;
+        for(j=0; j < No_tile; j++){
+          if(adapt_area[j] == 3){
+            tmpsum[2] += TILE_SEG_BR[index][j][i[2]];
+          }
+        }
+        if(tmpsum[0] + tmpsum[1] + tmpsum[2] >= remainBW) break;
+        if(i[2] > i[0]) break;
+        //
+        for(i[3] = 0; i[3] < NO_VER; i[3]++){//4
+          //
+          tmpsum[3] = 0;
+          for(j=0; j < No_tile; j++){
+            if(adapt_area[j] == 4){
+              tmpsum[3] += TILE_SEG_BR[index][j][i[3]];
+            }
+          }
+          if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] >= remainBW) break;
+          if(i[3] > i[0]) break;
+          //
+          for(i[4] = 0; i[4] < NO_VER; i[4]++){//5
+            //
+            tmpsum[4] = 0;
+            for(j=0; j < No_tile; j++){
+              if(adapt_area[j] == 5){
+                tmpsum[4] += TILE_SEG_BR[index][j][i[4]];
+              }
+            }
+            if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] >= remainBW) break;
+            if(i[4] > i[0]) break;
+            //
+            for(i[5] = 0; i[5] < NO_VER; i[5]++){//6
+              //
+              tmpsum[5] = 0;
+              for(j=0; j < No_tile; j++){
+                if(adapt_area[j] == 6){
+                  tmpsum[5] += TILE_SEG_BR[index][j][i[5]];
+                }
+              }
+              if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] >= remainBW) break;
+              if(i[5] > i[0] || i[5] > i[1] || i[5] > i[2] || i[5] > i[3] || i[5] > i[4]) break;
+              //if(i[5] > i[0] || i[5] > i[1]) break;
+              //
+              for(i[6] = 0; i[6] < NO_VER; i[6]++){//7
+                //
+                tmpsum[6] = 0;
+                for(j=0; j < No_tile; j++){
+                  if(adapt_area[j] == 7){
+                    tmpsum[6] += TILE_SEG_BR[index][j][i[6]];
+                  }
+                }
+                if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] >= remainBW) break;
+                if(i[6] > i[0] || i[6] > i[1] || i[6] > i[2] || i[6] > i[3] || i[6] > i[4]) break;
+                //if(i[6] > i[0] || i[6] > i[2]) break;
+                //
+                for(i[7] = 0; i[7] < NO_VER; i[7]++){//8
+                  //
+                  tmpsum[7] = 0;
+                  for(j=0; j < No_tile; j++){
+                    if(adapt_area[j] == 8){
+                      tmpsum[7] += TILE_SEG_BR[index][j][i[7]];
+                    }
+                  }
+                  if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] + tmpsum[7] >= remainBW) break;
+                  if(i[7] > i[0] || i[7] > i[1] || i[7] > i[2] || i[7] > i[3] || i[7] > i[4]) break;
+                  //if(i[7] > i[0] || i[7] > i[3]) break;
+                  //
+                  for(i[8] = 0; i[8] < NO_VER; i[8]++){
+                    //
+                    tmpsum[8] = 0;
+                    for(j=0; j < No_tile; j++){
+                      if(adapt_area[j] == 9){
+                        tmpsum[8] += TILE_SEG_BR[index][j][i[8]];
+                      }
+                    }
+                    if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] + tmpsum[7] + tmpsum[8] >= remainBW) break;
+                    if(i[8] > i[0] || i[8] > i[1] || i[8] > i[2] || i[8] > i[3] || i[8] > i[4]) break;
+                    //if(i[8] > i[0] || i[8] > i[4]) break;
+                    count2++;
+                    // assign version for each area
+                    sum = 0;
+                    for(j=0; j < No_tile; j++){
+                      if(adapt_area[j] > 0){
+                        tileVer[j] = i[adapt_area[j]-1];
+                        sum += TILE_SEG_BR[index][j][tileVer[j]];
+                      }
+                    }
+                    //
+                    if(sum <= remainBW){
+                      // using remaining bandwidth (if any) to increase tile versions
+                      remainBW2 = remainBW - sum;
+                      int BREAK_FLAG;
+                      int area_id;
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        //for(area_id = 5; area_id >= 2; area_id --){
+                        for(ii=No_tile-1; ii >= 0; ii--){
+                          if(adapt_area[ii] == 1  && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                            remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                            tileVer[ii] += 1;
+                            BREAK_FLAG = 0;
+                          }
+                        }
+                        //}
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        //for(area_id = 5; area_id >= 2; area_id --){
+                        for(ii=0; ii < No_tile; ii++){
+                          if(adapt_area[ii] >=2 && adapt_area[ii] <=5 && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                            remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                            tileVer[ii] += 1;
+                            BREAK_FLAG = 0;
+                          }
+                        }
+                        //}
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        for(area_id = 6; area_id <= 9; area_id ++){
+                          for(ii=0; ii < No_tile; ii++){
+                            if(adapt_area[ii] == area_id && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                              remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                              tileVer[ii] += 1;
+                              BREAK_FLAG = 0;
+                            }
+                          }
+                        }
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      // compute viewport PSNR
+                      vpPSNR = 0;
+                      vpPSNR_oposite = 0;
+                      int tmp_vp[2];
+                      for(j=0; j < INTER; j++){
+                        tmp_vp[0] = est_frame_vp_ins[index * INTER + j][0] + est_err_ins[index][0] * j * 1.0 / (INTER -1);
+                        tmp_vp[1] = est_frame_vp_ins[index * INTER][1];
+                        if(tmp_vp[0] > 180)
+                          tmp_vp[0] -= 360;
+                        if(tmp_vp[0] <= -180)
+                          tmp_vp[0] += 360;
+                        if(tmp_vp[1] > 90)
+                          tmp_vp[1] = 90;
+                        if(tmp_vp[1] < -90)
+                          tmp_vp[1] = -90;
+                        vpPSNR += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
+                        //
+                        if(est_frame_vp_ins[index*INTER + INTER -1][0] > est_frame_vp_ins[index*INTER][0])
+                          tmp_vp[0] = est_frame_vp_ins[index * INTER][0] - abs(est_err_ins[index][0]) * j * 1.0 / (INTER -1);
+                        else
+                          tmp_vp[0] = est_frame_vp_ins[index * INTER][0] + abs(est_err_ins[index][0]) * j * 1.0 / (INTER -1);
+                        tmp_vp[1] = est_frame_vp_ins[index * INTER][1];
+                        if(tmp_vp[0] > 180)
+                          tmp_vp[0] -= 360;
+                        if(tmp_vp[0] <= -180)
+                          tmp_vp[0] += 360;
+                        if(tmp_vp[1] > 90)
+                          tmp_vp[1] = 90;
+                        if(tmp_vp[1] < -90)
+                          tmp_vp[1] = -90;
+                        vpPSNR_oposite += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
+}
+                      if((vpPSNR + vpPSNR_oposite) > max_vpPSNR){
+                        //for(j=0; j < No_tile; j++)
+                        //  ret[j] = tileVer[j];
+                        std::copy (tileVer, tileVer + No_tile, ret);
+                        max_vpPSNR = vpPSNR + vpPSNR_oposite;
+                        max_remainBW = remainBW2;
+                        if(index==3 && max_vpPSNR >= 42.39){
+                          double total_br = 0;
+                          // printf("[DUC]: remainBW=%.2f\n", remainBW2);
+                          for(j=0; j < No_tile; j++){
+                            total_br += TILE_SEG_BR[index][j][ret[j]];
+                            // printf("%d ", tileVer[j]);
+                            // if((j+1) % 8 == 0) printf("\n");
+                          }
+                          // printf("[DUC]: total_br=%.2f remainBW=%.2f\n", total_br, est_seg_thrp[index] - total_br);
+                        }
+                      }
+                      count++;
+                    }
+                    //
+                  }//9
+                }//8
+              }//7
+            }//6
+          }//5
+        }//4
+      }//3
+    }//2
+
+}
+return ret;
+}
+int* DecisionEngine::OPT_2_ONLY_PHI_ALL_INS(int index){
+  int NUM_EXT_PART = 9;
+  int i[100], j, ii;
+  int EXT_W = 2;
+  double remainBW,remainBW2, max_vpPSNR = 0, vpPSNR,vpPSNR_oposite, max_remainBW;
+  double tmpsum[100];
+  int* tileVer = (int*) malloc(No_tile * sizeof(int));
+  int* ret = (int*) malloc(No_tile * sizeof(int));
+  // 
+  // printf("#[ISM_ext] (%d, %d)\n", est_vp[index][0], est_vp[index][1]);
+  printf("#[OPT_2_ONLY_PHI_ALL_INS] index=%d\n", index);
+  int* vmask = get_visible_tile(est_vp[index]);
+  if(vmask == NULL){
+    printf("(%d, %d)\n", est_vp[index][0], est_vp[index][1]);
+    exit(1);
+  }
+  int* adapt_area = extVmask2(vmask, No_face, No_tile_h, No_tile_v, EXT_W);
+  int count = 0, count2=0;
+  double sum;
+  int WITH_BREAK = 1;
+  if(index < BUFF/INTER){
+    for(j=0; j < No_tile; j++)
+      ret[j] = 0;
+    return ret;
+  }
+  //
+  // printf("#[ISM_ext]: index=%d est_thrp=%.2f(kbps)\n", index, est_seg_thrp[index]);
+  /* display the adapt area */
+  /*
+     for(j=0; j < No_tile; j++){
+     printf("%d ", adapt_area[j]);
+     if((j+1) % 8 == 0) printf("\n");
+     }
+     */
+  // select the lowest version for background tiles
+  remainBW = est_seg_thrp[index];
+  for(j=0; j < No_tile; j++){
+    if(adapt_area[j] == 0){
+      tileVer[j] = 0;
+      remainBW -= TILE_SEG_BR[index][j][0];
+    }
+  }
+  // loop to find optimal versions of tiles in other areas
+  for(i[0] = 0; i[0] < NO_VER; i[0]++){//1
+    //
+    tmpsum[0] = 0;      
+    for(j=0; j < No_tile; j++){
+      if(adapt_area[j] == 1){
+        tmpsum[0] += TILE_SEG_BR[index][j][i[0]];
+      }
+    }
+    if(tmpsum[0] >= remainBW) break;
+    //
+    for(i[1] = 0; i[1] < NO_VER; i[1]++){//2
+      //
+      tmpsum[1] = 0;
+      for(j=0; j < No_tile; j++){
+        if(adapt_area[j] == 2){
+          tmpsum[1] += TILE_SEG_BR[index][j][i[1]];
+        }
+      }
+      if(tmpsum[0] + tmpsum[1] >= remainBW) break;
+      if(i[1] > i[0]) break;
+      //
+      for(i[2] = 0; i[2] < NO_VER; i[2]++){//3
+        //
+        tmpsum[2] = 0;
+        for(j=0; j < No_tile; j++){
+          if(adapt_area[j] == 3){
+            tmpsum[2] += TILE_SEG_BR[index][j][i[2]];
+          }
+        }
+        if(tmpsum[0] + tmpsum[1] + tmpsum[2] >= remainBW) break;
+        if(i[2] > i[0]) break;
+        //
+        for(i[3] = 0; i[3] < NO_VER; i[3]++){//4
+          //
+          tmpsum[3] = 0;
+          for(j=0; j < No_tile; j++){
+            if(adapt_area[j] == 4){
+              tmpsum[3] += TILE_SEG_BR[index][j][i[3]];
+            }
+          }
+          if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] >= remainBW) break;
+          if(i[3] > i[0]) break;
+          //
+          for(i[4] = 0; i[4] < NO_VER; i[4]++){//5
+            //
+            tmpsum[4] = 0;
+            for(j=0; j < No_tile; j++){
+              if(adapt_area[j] == 5){
+                tmpsum[4] += TILE_SEG_BR[index][j][i[4]];
+              }
+            }
+            if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] >= remainBW) break;
+            if(i[4] > i[0]) break;
+            //
+            for(i[5] = 0; i[5] < NO_VER; i[5]++){//6
+              //
+              tmpsum[5] = 0;
+              for(j=0; j < No_tile; j++){
+                if(adapt_area[j] == 6){
+                  tmpsum[5] += TILE_SEG_BR[index][j][i[5]];
+                }
+              }
+              if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] >= remainBW) break;
+              if(i[5] > i[0] || i[5] > i[1] || i[5] > i[2] || i[5] > i[3] || i[5] > i[4]) break;
+              //if(i[5] > i[0] || i[5] > i[1]) break;
+              //
+              for(i[6] = 0; i[6] < NO_VER; i[6]++){//7
+                //
+                tmpsum[6] = 0;
+                for(j=0; j < No_tile; j++){
+                  if(adapt_area[j] == 7){
+                    tmpsum[6] += TILE_SEG_BR[index][j][i[6]];
+                  }
+                }
+                if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] >= remainBW) break;
+                if(i[6] > i[0] || i[6] > i[1] || i[6] > i[2] || i[6] > i[3] || i[6] > i[4]) break;
+                //if(i[6] > i[0] || i[6] > i[2]) break;
+                //
+                for(i[7] = 0; i[7] < NO_VER; i[7]++){//8
+                  //
+                  tmpsum[7] = 0;
+                  for(j=0; j < No_tile; j++){
+                    if(adapt_area[j] == 8){
+                      tmpsum[7] += TILE_SEG_BR[index][j][i[7]];
+                    }
+                  }
+                  if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] + tmpsum[7] >= remainBW) break;
+                  if(i[7] > i[0] || i[7] > i[1] || i[7] > i[2] || i[7] > i[3] || i[7] > i[4]) break;
+                  //if(i[7] > i[0] || i[7] > i[3]) break;
+                  //
+                  for(i[8] = 0; i[8] < NO_VER; i[8]++){
+                    //
+                    tmpsum[8] = 0;
+                    for(j=0; j < No_tile; j++){
+                      if(adapt_area[j] == 9){
+                        tmpsum[8] += TILE_SEG_BR[index][j][i[8]];
+                      }
+                    }
+                    if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] + tmpsum[7] + tmpsum[8] >= remainBW) break;
+                    if(i[8] > i[0] || i[8] > i[1] || i[8] > i[2] || i[8] > i[3] || i[8] > i[4]) break;
+                    //if(i[8] > i[0] || i[8] > i[4]) break;
+                    count2++;
+                    // assign version for each area
+                    sum = 0;
+                    for(j=0; j < No_tile; j++){
+                      if(adapt_area[j] > 0){
+                        tileVer[j] = i[adapt_area[j]-1];
+                        sum += TILE_SEG_BR[index][j][tileVer[j]];
+                      }
+                    }
+                    //
+                    if(sum <= remainBW){
+                      // using remaining bandwidth (if any) to increase tile versions
+                      remainBW2 = remainBW - sum;
+                      int BREAK_FLAG;
+                      int area_id;
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        //for(area_id = 5; area_id >= 2; area_id --){
+                        for(ii=No_tile-1; ii >= 0; ii--){
+                          if(adapt_area[ii] == 1  && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                            remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                            tileVer[ii] += 1;
+                            BREAK_FLAG = 0;
+                          }
+                        }
+                        //}
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        //for(area_id = 5; area_id >= 2; area_id --){
+                        for(ii=0; ii < No_tile; ii++){
+                          if(adapt_area[ii] >=2 && adapt_area[ii] <=5 && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                            remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                            tileVer[ii] += 1;
+                            BREAK_FLAG = 0;
+                          }
+                        }
+                        //}
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        for(area_id = 6; area_id <= 9; area_id ++){
+                          for(ii=0; ii < No_tile; ii++){
+                            if(adapt_area[ii] == area_id && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                              remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                              tileVer[ii] += 1;
+                              BREAK_FLAG = 0;
+                            }
+                          }
+                        }
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      // compute viewport PSNR
+                      vpPSNR = 0;
+                      vpPSNR_oposite = 0;
+                      int tmp_vp[2];
+                      for(j=0; j < INTER; j++){
+                        tmp_vp[0] = est_frame_vp_ins[index * INTER + j][0] + est_err[index][0] * j * 1.0 / (INTER -1);
+                        tmp_vp[1] = est_frame_vp_ins[index * INTER][1];
+                        if(tmp_vp[0] > 180)
+                          tmp_vp[0] -= 360;
+                        if(tmp_vp[0] <= -180)
+                          tmp_vp[0] += 360;
+                        if(tmp_vp[1] > 90)
+                          tmp_vp[1] = 90;
+                        if(tmp_vp[1] < -90)
+                          tmp_vp[1] = -90;
+                        vpPSNR += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
+                        //
+                        tmp_vp[0] = 2*est_frame_vp_ins[index*INTER][0] - (est_frame_vp_ins[index * INTER + j][0] + est_err[index][0] * j * 1.0 / (INTER -1));
+                        tmp_vp[1] = est_frame_vp_ins[index * INTER][1];
+                        if(tmp_vp[0] > 180)
+                          tmp_vp[0] -= 360;
+                        if(tmp_vp[0] <= -180)
+                          tmp_vp[0] += 360;
+                        if(tmp_vp[1] > 90)
+                          tmp_vp[1] = 90;
+                        if(tmp_vp[1] < -90)
+                          tmp_vp[1] = -90;
+                        vpPSNR_oposite += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
+}
+                      if((vpPSNR + vpPSNR_oposite) > max_vpPSNR){
+                        //for(j=0; j < No_tile; j++)
+                        //  ret[j] = tileVer[j];
+                        std::copy (tileVer, tileVer + No_tile, ret);
+                        max_vpPSNR = vpPSNR + vpPSNR_oposite;
+                        max_remainBW = remainBW2;
+                        if(index==3 && max_vpPSNR >= 42.39){
+                          double total_br = 0;
+                          // printf("[DUC]: remainBW=%.2f\n", remainBW2);
+                          for(j=0; j < No_tile; j++){
+                            total_br += TILE_SEG_BR[index][j][ret[j]];
+                            // printf("%d ", tileVer[j]);
+                            // if((j+1) % 8 == 0) printf("\n");
+                          }
+                          // printf("[DUC]: total_br=%.2f remainBW=%.2f\n", total_br, est_seg_thrp[index] - total_br);
+                        }
+                      }
+                      count++;
+                    }
+                    //
+                  }//9
+                }//8
+              }//7
+            }//6
+          }//5
+        }//4
+      }//3
+    }//2
+
+}
+return ret;
+}
+int* DecisionEngine::OPT_2_ONLY_PHI_ERR_AVG(int index){
+  int NUM_EXT_PART = 9;
+  int i[100], j, ii;
+  int EXT_W = 2;
+  double remainBW,remainBW2, max_vpPSNR = 0, vpPSNR,vpPSNR_oposite, max_remainBW;
+  double tmpsum[100];
+  int* tileVer = (int*) malloc(No_tile * sizeof(int));
+  int* ret = (int*) malloc(No_tile * sizeof(int));
+  // 
+  // printf("#[ISM_ext] (%d, %d)\n", est_vp[index][0], est_vp[index][1]);
+  printf("#[OPT_2_ONLY_PHI_ERR_AVG] index=%d\n", index);
+  int* vmask = get_visible_tile(est_vp[index]);
+  if(vmask == NULL){
+    printf("(%d, %d)\n", est_vp[index][0], est_vp[index][1]);
+    exit(1);
+  }
+  int* adapt_area = extVmask2(vmask, No_face, No_tile_h, No_tile_v, EXT_W);
+  int count = 0, count2=0;
+  double sum;
+  int WITH_BREAK = 1;
+  if(index < BUFF/INTER){
+    for(j=0; j < No_tile; j++)
+      ret[j] = 0;
+    return ret;
+  }
+  //
+  // printf("#[ISM_ext]: index=%d est_thrp=%.2f(kbps)\n", index, est_seg_thrp[index]);
+  /* display the adapt area */
+  /*
+     for(j=0; j < No_tile; j++){
+     printf("%d ", adapt_area[j]);
+     if((j+1) % 8 == 0) printf("\n");
+     }
+     */
+  // select the lowest version for background tiles
+  remainBW = est_seg_thrp[index];
+  for(j=0; j < No_tile; j++){
+    if(adapt_area[j] == 0){
+      tileVer[j] = 0;
+      remainBW -= TILE_SEG_BR[index][j][0];
+    }
+  }
+  // loop to find optimal versions of tiles in other areas
+  for(i[0] = 0; i[0] < NO_VER; i[0]++){//1
+    //
+    tmpsum[0] = 0;      
+    for(j=0; j < No_tile; j++){
+      if(adapt_area[j] == 1){
+        tmpsum[0] += TILE_SEG_BR[index][j][i[0]];
+      }
+    }
+    if(tmpsum[0] >= remainBW) break;
+    //
+    for(i[1] = 0; i[1] < NO_VER; i[1]++){//2
+      //
+      tmpsum[1] = 0;
+      for(j=0; j < No_tile; j++){
+        if(adapt_area[j] == 2){
+          tmpsum[1] += TILE_SEG_BR[index][j][i[1]];
+        }
+      }
+      if(tmpsum[0] + tmpsum[1] >= remainBW) break;
+      if(i[1] > i[0]) break;
+      //
+      for(i[2] = 0; i[2] < NO_VER; i[2]++){//3
+        //
+        tmpsum[2] = 0;
+        for(j=0; j < No_tile; j++){
+          if(adapt_area[j] == 3){
+            tmpsum[2] += TILE_SEG_BR[index][j][i[2]];
+          }
+        }
+        if(tmpsum[0] + tmpsum[1] + tmpsum[2] >= remainBW) break;
+        if(i[2] > i[0]) break;
+        //
+        for(i[3] = 0; i[3] < NO_VER; i[3]++){//4
+          //
+          tmpsum[3] = 0;
+          for(j=0; j < No_tile; j++){
+            if(adapt_area[j] == 4){
+              tmpsum[3] += TILE_SEG_BR[index][j][i[3]];
+            }
+          }
+          if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] >= remainBW) break;
+          if(i[3] > i[0]) break;
+          //
+          for(i[4] = 0; i[4] < NO_VER; i[4]++){//5
+            //
+            tmpsum[4] = 0;
+            for(j=0; j < No_tile; j++){
+              if(adapt_area[j] == 5){
+                tmpsum[4] += TILE_SEG_BR[index][j][i[4]];
+              }
+            }
+            if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] >= remainBW) break;
+            if(i[4] > i[0]) break;
+            //
+            for(i[5] = 0; i[5] < NO_VER; i[5]++){//6
+              //
+              tmpsum[5] = 0;
+              for(j=0; j < No_tile; j++){
+                if(adapt_area[j] == 6){
+                  tmpsum[5] += TILE_SEG_BR[index][j][i[5]];
+                }
+              }
+              if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] >= remainBW) break;
+              if(i[5] > i[0] || i[5] > i[1] || i[5] > i[2] || i[5] > i[3] || i[5] > i[4]) break;
+              //if(i[5] > i[0] || i[5] > i[1]) break;
+              //
+              for(i[6] = 0; i[6] < NO_VER; i[6]++){//7
+                //
+                tmpsum[6] = 0;
+                for(j=0; j < No_tile; j++){
+                  if(adapt_area[j] == 7){
+                    tmpsum[6] += TILE_SEG_BR[index][j][i[6]];
+                  }
+                }
+                if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] >= remainBW) break;
+                if(i[6] > i[0] || i[6] > i[1] || i[6] > i[2] || i[6] > i[3] || i[6] > i[4]) break;
+                //if(i[6] > i[0] || i[6] > i[2]) break;
+                //
+                for(i[7] = 0; i[7] < NO_VER; i[7]++){//8
+                  //
+                  tmpsum[7] = 0;
+                  for(j=0; j < No_tile; j++){
+                    if(adapt_area[j] == 8){
+                      tmpsum[7] += TILE_SEG_BR[index][j][i[7]];
+                    }
+                  }
+                  if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] + tmpsum[7] >= remainBW) break;
+                  if(i[7] > i[0] || i[7] > i[1] || i[7] > i[2] || i[7] > i[3] || i[7] > i[4]) break;
+                  //if(i[7] > i[0] || i[7] > i[3]) break;
+                  //
+                  for(i[8] = 0; i[8] < NO_VER; i[8]++){
+                    //
+                    tmpsum[8] = 0;
+                    for(j=0; j < No_tile; j++){
+                      if(adapt_area[j] == 9){
+                        tmpsum[8] += TILE_SEG_BR[index][j][i[8]];
+                      }
+                    }
+                    if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] + tmpsum[7] + tmpsum[8] >= remainBW) break;
+                    if(i[8] > i[0] || i[8] > i[1] || i[8] > i[2] || i[8] > i[3] || i[8] > i[4]) break;
+                    //if(i[8] > i[0] || i[8] > i[4]) break;
+                    count2++;
+                    // assign version for each area
+                    sum = 0;
+                    for(j=0; j < No_tile; j++){
+                      if(adapt_area[j] > 0){
+                        tileVer[j] = i[adapt_area[j]-1];
+                        sum += TILE_SEG_BR[index][j][tileVer[j]];
+                      }
+                    }
+                    //
+                    if(sum <= remainBW){
+                      // using remaining bandwidth (if any) to increase tile versions
+                      remainBW2 = remainBW - sum;
+                      int BREAK_FLAG;
+                      int area_id;
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        //for(area_id = 5; area_id >= 2; area_id --){
+                        for(ii=No_tile-1; ii >= 0; ii--){
+                          if(adapt_area[ii] == 1  && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                            remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                            tileVer[ii] += 1;
+                            BREAK_FLAG = 0;
+                          }
+                        }
+                        //}
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        //for(area_id = 5; area_id >= 2; area_id --){
+                        for(ii=0; ii < No_tile; ii++){
+                          if(adapt_area[ii] >=2 && adapt_area[ii] <=5 && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                            remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                            tileVer[ii] += 1;
+                            BREAK_FLAG = 0;
+                          }
+                        }
+                        //}
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        for(area_id = 6; area_id <= 9; area_id ++){
+                          for(ii=0; ii < No_tile; ii++){
+                            if(adapt_area[ii] == area_id && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                              remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                              tileVer[ii] += 1;
+                              BREAK_FLAG = 0;
+                            }
+                          }
+                        }
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      // compute viewport PSNR
+                      vpPSNR = 0;
+                      vpPSNR_oposite = 0;
+                      int tmp_vp[2];
+                      for(j=0; j < INTER; j++){
+                        tmp_vp[0] = est_frame_vp[index * INTER + j][0] + est_err[index][0] * j * 1.0 / (INTER -1);
+                        tmp_vp[1] = est_frame_vp[index * INTER][1];
+                        if(tmp_vp[0] > 180)
+                          tmp_vp[0] -= 360;
+                        if(tmp_vp[0] <= -180)
+                          tmp_vp[0] += 360;
+                        if(tmp_vp[1] > 90)
+                          tmp_vp[1] = 90;
+                        if(tmp_vp[1] < -90)
+                          tmp_vp[1] = -90;
+                        vpPSNR += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
+                        //
+                        if(est_frame_vp[index*INTER + INTER -1][0] > est_frame_vp[index*INTER][0])
+                          tmp_vp[0] = est_frame_vp[index * INTER][0] - abs(est_err[index][0]) * j * 1.0 / (INTER -1);
+                        else
+                          tmp_vp[0] = est_frame_vp[index * INTER][0] + abs(est_err[index][0]) * j * 1.0 / (INTER -1);
+                        tmp_vp[1] = est_frame_vp[index * INTER][1];
+                        if(tmp_vp[0] > 180)
+                          tmp_vp[0] -= 360;
+                        if(tmp_vp[0] <= -180)
+                          tmp_vp[0] += 360;
+                        if(tmp_vp[1] > 90)
+                          tmp_vp[1] = 90;
+                        if(tmp_vp[1] < -90)
+                          tmp_vp[1] = -90;
+                        vpPSNR_oposite += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
+}
+                      if((vpPSNR + vpPSNR_oposite) > max_vpPSNR){
+                        //for(j=0; j < No_tile; j++)
+                        //  ret[j] = tileVer[j];
+                        std::copy (tileVer, tileVer + No_tile, ret);
+                        max_vpPSNR = vpPSNR + vpPSNR_oposite;
+                        max_remainBW = remainBW2;
+                        if(index==3 && max_vpPSNR >= 42.39){
+                          double total_br = 0;
+                          // printf("[DUC]: remainBW=%.2f\n", remainBW2);
+                          for(j=0; j < No_tile; j++){
+                            total_br += TILE_SEG_BR[index][j][ret[j]];
+                            // printf("%d ", tileVer[j]);
+                            // if((j+1) % 8 == 0) printf("\n");
+                          }
+                          // printf("[DUC]: total_br=%.2f remainBW=%.2f\n", total_br, est_seg_thrp[index] - total_br);
+                        }
+                      }
+                      count++;
+                    }
+                    //
+                  }//9
+                }//8
+              }//7
+            }//6
+          }//5
+        }//4
+      }//3
+    }//2
+
+}
+return ret;
+}
+
+int* DecisionEngine::OPT_2_ONLY_PHI_ALL_AVG(int index){
+  int NUM_EXT_PART = 9;
+  int i[100], j, ii;
+  int EXT_W = 2;
+  double remainBW,remainBW2, max_vpPSNR = 0, vpPSNR,vpPSNR_oposite, max_remainBW;
+  double tmpsum[100];
+  int* tileVer = (int*) malloc(No_tile * sizeof(int));
+  int* ret = (int*) malloc(No_tile * sizeof(int));
+  // 
+  // printf("#[ISM_ext] (%d, %d)\n", est_vp[index][0], est_vp[index][1]);
+  printf("#[OPT_2_ONLY_PHI_ALL_AVG] index=%d\n", index);
+  int* vmask = get_visible_tile(est_vp[index]);
+  if(vmask == NULL){
+    printf("(%d, %d)\n", est_vp[index][0], est_vp[index][1]);
+    exit(1);
+  }
+  int* adapt_area = extVmask2(vmask, No_face, No_tile_h, No_tile_v, EXT_W);
+  int count = 0, count2=0;
+  double sum;
+  int WITH_BREAK = 1;
+  if(index < BUFF/INTER){
+    for(j=0; j < No_tile; j++)
+      ret[j] = 0;
+    return ret;
+  }
+  //
+  // printf("#[ISM_ext]: index=%d est_thrp=%.2f(kbps)\n", index, est_seg_thrp[index]);
+  /* display the adapt area */
+  /*
+     for(j=0; j < No_tile; j++){
+     printf("%d ", adapt_area[j]);
+     if((j+1) % 8 == 0) printf("\n");
+     }
+     */
+  // select the lowest version for background tiles
+  remainBW = est_seg_thrp[index];
+  for(j=0; j < No_tile; j++){
+    if(adapt_area[j] == 0){
+      tileVer[j] = 0;
+      remainBW -= TILE_SEG_BR[index][j][0];
+    }
+  }
+  // loop to find optimal versions of tiles in other areas
+  for(i[0] = 0; i[0] < NO_VER; i[0]++){//1
+    //
+    tmpsum[0] = 0;      
+    for(j=0; j < No_tile; j++){
+      if(adapt_area[j] == 1){
+        tmpsum[0] += TILE_SEG_BR[index][j][i[0]];
+      }
+    }
+    if(tmpsum[0] >= remainBW) break;
+    //
+    for(i[1] = 0; i[1] < NO_VER; i[1]++){//2
+      //
+      tmpsum[1] = 0;
+      for(j=0; j < No_tile; j++){
+        if(adapt_area[j] == 2){
+          tmpsum[1] += TILE_SEG_BR[index][j][i[1]];
+        }
+      }
+      if(tmpsum[0] + tmpsum[1] >= remainBW) break;
+      if(i[1] > i[0]) break;
+      //
+      for(i[2] = 0; i[2] < NO_VER; i[2]++){//3
+        //
+        tmpsum[2] = 0;
+        for(j=0; j < No_tile; j++){
+          if(adapt_area[j] == 3){
+            tmpsum[2] += TILE_SEG_BR[index][j][i[2]];
+          }
+        }
+        if(tmpsum[0] + tmpsum[1] + tmpsum[2] >= remainBW) break;
+        if(i[2] > i[0]) break;
+        //
+        for(i[3] = 0; i[3] < NO_VER; i[3]++){//4
+          //
+          tmpsum[3] = 0;
+          for(j=0; j < No_tile; j++){
+            if(adapt_area[j] == 4){
+              tmpsum[3] += TILE_SEG_BR[index][j][i[3]];
+            }
+          }
+          if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] >= remainBW) break;
+          if(i[3] > i[0]) break;
+          //
+          for(i[4] = 0; i[4] < NO_VER; i[4]++){//5
+            //
+            tmpsum[4] = 0;
+            for(j=0; j < No_tile; j++){
+              if(adapt_area[j] == 5){
+                tmpsum[4] += TILE_SEG_BR[index][j][i[4]];
+              }
+            }
+            if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] >= remainBW) break;
+            if(i[4] > i[0]) break;
+            //
+            for(i[5] = 0; i[5] < NO_VER; i[5]++){//6
+              //
+              tmpsum[5] = 0;
+              for(j=0; j < No_tile; j++){
+                if(adapt_area[j] == 6){
+                  tmpsum[5] += TILE_SEG_BR[index][j][i[5]];
+                }
+              }
+              if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] >= remainBW) break;
+              if(i[5] > i[0] || i[5] > i[1] || i[5] > i[2] || i[5] > i[3] || i[5] > i[4]) break;
+              //if(i[5] > i[0] || i[5] > i[1]) break;
+              //
+              for(i[6] = 0; i[6] < NO_VER; i[6]++){//7
+                //
+                tmpsum[6] = 0;
+                for(j=0; j < No_tile; j++){
+                  if(adapt_area[j] == 7){
+                    tmpsum[6] += TILE_SEG_BR[index][j][i[6]];
+                  }
+                }
+                if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] >= remainBW) break;
+                if(i[6] > i[0] || i[6] > i[1] || i[6] > i[2] || i[6] > i[3] || i[6] > i[4]) break;
+                //if(i[6] > i[0] || i[6] > i[2]) break;
+                //
+                for(i[7] = 0; i[7] < NO_VER; i[7]++){//8
+                  //
+                  tmpsum[7] = 0;
+                  for(j=0; j < No_tile; j++){
+                    if(adapt_area[j] == 8){
+                      tmpsum[7] += TILE_SEG_BR[index][j][i[7]];
+                    }
+                  }
+                  if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] + tmpsum[7] >= remainBW) break;
+                  if(i[7] > i[0] || i[7] > i[1] || i[7] > i[2] || i[7] > i[3] || i[7] > i[4]) break;
+                  //if(i[7] > i[0] || i[7] > i[3]) break;
+                  //
+                  for(i[8] = 0; i[8] < NO_VER; i[8]++){
+                    //
+                    tmpsum[8] = 0;
+                    for(j=0; j < No_tile; j++){
+                      if(adapt_area[j] == 9){
+                        tmpsum[8] += TILE_SEG_BR[index][j][i[8]];
+                      }
+                    }
+                    if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] + tmpsum[7] + tmpsum[8] >= remainBW) break;
+                    if(i[8] > i[0] || i[8] > i[1] || i[8] > i[2] || i[8] > i[3] || i[8] > i[4]) break;
+                    //if(i[8] > i[0] || i[8] > i[4]) break;
+                    count2++;
+                    // assign version for each area
+                    sum = 0;
+                    for(j=0; j < No_tile; j++){
+                      if(adapt_area[j] > 0){
+                        tileVer[j] = i[adapt_area[j]-1];
+                        sum += TILE_SEG_BR[index][j][tileVer[j]];
+                      }
+                    }
+                    //
+                    if(sum <= remainBW){
+                      // using remaining bandwidth (if any) to increase tile versions
+                      remainBW2 = remainBW - sum;
+                      int BREAK_FLAG;
+                      int area_id;
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        //for(area_id = 5; area_id >= 2; area_id --){
+                        for(ii=No_tile-1; ii >= 0; ii--){
+                          if(adapt_area[ii] == 1  && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                            remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                            tileVer[ii] += 1;
+                            BREAK_FLAG = 0;
+                          }
+                        }
+                        //}
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        //for(area_id = 5; area_id >= 2; area_id --){
+                        for(ii=0; ii < No_tile; ii++){
+                          if(adapt_area[ii] >=2 && adapt_area[ii] <=5 && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                            remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                            tileVer[ii] += 1;
+                            BREAK_FLAG = 0;
+                          }
+                        }
+                        //}
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        for(area_id = 6; area_id <= 9; area_id ++){
+                          for(ii=0; ii < No_tile; ii++){
+                            if(adapt_area[ii] == area_id && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                              remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                              tileVer[ii] += 1;
+                              BREAK_FLAG = 0;
+                            }
+                          }
+                        }
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      // compute viewport PSNR
+                      vpPSNR = 0;
+                      vpPSNR_oposite = 0;
+                      int tmp_vp[2];
+                      for(j=0; j < INTER; j++){
+                        tmp_vp[0] = est_frame_vp[index * INTER + j][0] + est_err[index][0] * j * 1.0 / (INTER -1);
+                        tmp_vp[1] = est_frame_vp[index * INTER][1];
+                        if(tmp_vp[0] > 180)
+                          tmp_vp[0] -= 360;
+                        if(tmp_vp[0] <= -180)
+                          tmp_vp[0] += 360;
+                        if(tmp_vp[1] > 90)
+                          tmp_vp[1] = 90;
+                        if(tmp_vp[1] < -90)
+                          tmp_vp[1] = -90;
+                        vpPSNR += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
+                        //
+                        tmp_vp[0] = 2*est_frame_vp[index*INTER][0] - (est_frame_vp[index * INTER + j][0] + est_err[index][0] * j * 1.0 / (INTER -1));
+                        tmp_vp[1] = est_frame_vp[index * INTER][1];
+                        if(tmp_vp[0] > 180)
+                          tmp_vp[0] -= 360;
+                        if(tmp_vp[0] <= -180)
+                          tmp_vp[0] += 360;
+                        if(tmp_vp[1] > 90)
+                          tmp_vp[1] = 90;
+                        if(tmp_vp[1] < -90)
+                          tmp_vp[1] = -90;
+                        vpPSNR_oposite += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
+}
+                      if((vpPSNR + vpPSNR_oposite) > max_vpPSNR){
+                        //for(j=0; j < No_tile; j++)
+                        //  ret[j] = tileVer[j];
+                        std::copy (tileVer, tileVer + No_tile, ret);
+                        max_vpPSNR = vpPSNR + vpPSNR_oposite;
+                        max_remainBW = remainBW2;
+                        if(index==3 && max_vpPSNR >= 42.39){
+                          double total_br = 0;
+                          // printf("[DUC]: remainBW=%.2f\n", remainBW2);
+                          for(j=0; j < No_tile; j++){
+                            total_br += TILE_SEG_BR[index][j][ret[j]];
+                            // printf("%d ", tileVer[j]);
+                            // if((j+1) % 8 == 0) printf("\n");
+                          }
+                          // printf("[DUC]: total_br=%.2f remainBW=%.2f\n", total_br, est_seg_thrp[index] - total_br);
+                        }
+                      }
+                      count++;
+                    }
+                    //
+                  }//9
+                }//8
+              }//7
+            }//6
+          }//5
+        }//4
+      }//3
+    }//2
+
+}
+return ret;
+}
+int* DecisionEngine::OPT_2_ONLY_PHI_COMBI(int index){
+  int NUM_EXT_PART = 9;
+  int i[100], j, ii;
+  int EXT_W = 2;
+  double remainBW,remainBW2, max_vpPSNR = 0, vpPSNR,vpPSNR_ins, max_remainBW;
+  double tmpsum[100];
+  int* tileVer = (int*) malloc(No_tile * sizeof(int));
+  int* ret = (int*) malloc(No_tile * sizeof(int));
+  // 
+  printf("#[OPT_2_ONLY_PHI_COMBI] index=%d\n", index);
+  int* vmask = get_visible_tile(est_vp[index]);
+  if(vmask == NULL){
+    printf("(%d, %d)\n", est_vp[index][0], est_vp[index][1]);
+    exit(1);
+  }
+  int* adapt_area = extVmask2(vmask, No_face, No_tile_h, No_tile_v, EXT_W);
+  int count = 0, count2=0;
+  double sum;
+  int WITH_BREAK = 1;
+  if(index < BUFF/INTER){
+    for(j=0; j < No_tile; j++)
+      ret[j] = 0;
+    return ret;
+  }
+  //
+  // printf("#[ISM_ext]: index=%d est_thrp=%.2f(kbps)\n", index, est_seg_thrp[index]);
+  /* display the adapt area */
+  /*
+     for(j=0; j < No_tile; j++){
+     printf("%d ", adapt_area[j]);
+     if((j+1) % 8 == 0) printf("\n");
+     }
+     */
+  // select the lowest version for background tiles
+  remainBW = est_seg_thrp[index];
+  for(j=0; j < No_tile; j++){
+    if(adapt_area[j] == 0){
+      tileVer[j] = 0;
+      remainBW -= TILE_SEG_BR[index][j][0];
+    }
+  }
+  // loop to find optimal versions of tiles in other areas
+  for(i[0] = 0; i[0] < NO_VER; i[0]++){//1
+    //
+    tmpsum[0] = 0;      
+    for(j=0; j < No_tile; j++){
+      if(adapt_area[j] == 1){
+        tmpsum[0] += TILE_SEG_BR[index][j][i[0]];
+      }
+    }
+    if(tmpsum[0] >= remainBW) break;
+    //
+    for(i[1] = 0; i[1] < NO_VER; i[1]++){//2
+      //
+      tmpsum[1] = 0;
+      for(j=0; j < No_tile; j++){
+        if(adapt_area[j] == 2){
+          tmpsum[1] += TILE_SEG_BR[index][j][i[1]];
+        }
+      }
+      if(tmpsum[0] + tmpsum[1] >= remainBW) break;
+      if(i[1] > i[0]) break;
+      //
+      for(i[2] = 0; i[2] < NO_VER; i[2]++){//3
+        //
+        tmpsum[2] = 0;
+        for(j=0; j < No_tile; j++){
+          if(adapt_area[j] == 3){
+            tmpsum[2] += TILE_SEG_BR[index][j][i[2]];
+          }
+        }
+        if(tmpsum[0] + tmpsum[1] + tmpsum[2] >= remainBW) break;
+        if(i[2] > i[0]) break;
+        //
+        for(i[3] = 0; i[3] < NO_VER; i[3]++){//4
+          //
+          tmpsum[3] = 0;
+          for(j=0; j < No_tile; j++){
+            if(adapt_area[j] == 4){
+              tmpsum[3] += TILE_SEG_BR[index][j][i[3]];
+            }
+          }
+          if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] >= remainBW) break;
+          if(i[3] > i[0]) break;
+          //
+          for(i[4] = 0; i[4] < NO_VER; i[4]++){//5
+            //
+            tmpsum[4] = 0;
+            for(j=0; j < No_tile; j++){
+              if(adapt_area[j] == 5){
+                tmpsum[4] += TILE_SEG_BR[index][j][i[4]];
+              }
+            }
+            if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] >= remainBW) break;
+            if(i[4] > i[0]) break;
+            //
+            for(i[5] = 0; i[5] < NO_VER; i[5]++){//6
+              //
+              tmpsum[5] = 0;
+              for(j=0; j < No_tile; j++){
+                if(adapt_area[j] == 6){
+                  tmpsum[5] += TILE_SEG_BR[index][j][i[5]];
+                }
+              }
+              if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] >= remainBW) break;
+              if(i[5] > i[0] || i[5] > i[1] || i[5] > i[2] || i[5] > i[3] || i[5] > i[4]) break;
+              //if(i[5] > i[0] || i[5] > i[1]) break;
+              //
+              for(i[6] = 0; i[6] < NO_VER; i[6]++){//7
+                //
+                tmpsum[6] = 0;
+                for(j=0; j < No_tile; j++){
+                  if(adapt_area[j] == 7){
+                    tmpsum[6] += TILE_SEG_BR[index][j][i[6]];
+                  }
+                }
+                if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] >= remainBW) break;
+                if(i[6] > i[0] || i[6] > i[1] || i[6] > i[2] || i[6] > i[3] || i[6] > i[4]) break;
+                //if(i[6] > i[0] || i[6] > i[2]) break;
+                //
+                for(i[7] = 0; i[7] < NO_VER; i[7]++){//8
+                  //
+                  tmpsum[7] = 0;
+                  for(j=0; j < No_tile; j++){
+                    if(adapt_area[j] == 8){
+                      tmpsum[7] += TILE_SEG_BR[index][j][i[7]];
+                    }
+                  }
+                  if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] + tmpsum[7] >= remainBW) break;
+                  if(i[7] > i[0] || i[7] > i[1] || i[7] > i[2] || i[7] > i[3] || i[7] > i[4]) break;
+                  //if(i[7] > i[0] || i[7] > i[3]) break;
+                  //
+                  for(i[8] = 0; i[8] < NO_VER; i[8]++){
+                    //
+                    tmpsum[8] = 0;
+                    for(j=0; j < No_tile; j++){
+                      if(adapt_area[j] == 9){
+                        tmpsum[8] += TILE_SEG_BR[index][j][i[8]];
+                      }
+                    }
+                    if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] + tmpsum[7] + tmpsum[8] >= remainBW) break;
+                    if(i[8] > i[0] || i[8] > i[1] || i[8] > i[2] || i[8] > i[3] || i[8] > i[4]) break;
+                    //if(i[8] > i[0] || i[8] > i[4]) break;
+                    count2++;
+                    // assign version for each area
+                    sum = 0;
+                    for(j=0; j < No_tile; j++){
+                      if(adapt_area[j] > 0){
+                        tileVer[j] = i[adapt_area[j]-1];
+                        sum += TILE_SEG_BR[index][j][tileVer[j]];
+                      }
+                    }
+                    //
+                    if(sum <= remainBW){
+                      // using remaining bandwidth (if any) to increase tile versions
+                      remainBW2 = remainBW - sum;
+                      int BREAK_FLAG;
+                      int area_id;
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        //for(area_id = 5; area_id >= 2; area_id --){
+                        for(ii=No_tile-1; ii >= 0; ii--){
+                          if(adapt_area[ii] == 1  && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                            remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                            tileVer[ii] += 1;
+                            BREAK_FLAG = 0;
+                          }
+                        }
+                        //}
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        //for(area_id = 5; area_id >= 2; area_id --){
+                        for(ii=0; ii < No_tile; ii++){
+                          if(adapt_area[ii] >=2 && adapt_area[ii] <=5 && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                            remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                            tileVer[ii] += 1;
+                            BREAK_FLAG = 0;
+                          }
+                        }
+                        //}
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        for(area_id = 6; area_id <= 9; area_id ++){
+                          for(ii=0; ii < No_tile; ii++){
+                            if(adapt_area[ii] == area_id && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                              remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                              tileVer[ii] += 1;
+                              BREAK_FLAG = 0;
+                            }
+                          }
+                        }
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      // compute viewport PSNR
+                      vpPSNR = 0;
+                      vpPSNR_ins = 0;
+                      int tmp_vp[2];
+                      for(j=0; j < INTER; j++){
+                        tmp_vp[0] = est_frame_vp[index * INTER + j][0] + est_err[index][0] * j * 1.0 / (INTER -1);
+                        tmp_vp[1] = est_frame_vp[index * INTER][1];
+                        if(tmp_vp[0] > 180)
+                          tmp_vp[0] -= 360;
+                        if(tmp_vp[0] <= -180)
+                          tmp_vp[0] += 360;
+                        if(tmp_vp[1] > 90)
+                          tmp_vp[1] = 90;
+                        if(tmp_vp[1] < -90)
+                          tmp_vp[1] = -90;
+                        vpPSNR += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
+                        //
+                        tmp_vp[0] = est_frame_vp_ins[index * INTER + j][0] + est_err_ins[index][0] * j * 1.0 / (INTER -1);
+                        tmp_vp[1] = est_frame_vp_ins[index * INTER][1];
+                        if(tmp_vp[0] > 180)
+                          tmp_vp[0] -= 360;
+                        if(tmp_vp[0] <= -180)
+                          tmp_vp[0] += 360;
+                        if(tmp_vp[1] > 90)
+                          tmp_vp[1] = 90;
+                        if(tmp_vp[1] < -90)
+                          tmp_vp[1] = -90;
+                        vpPSNR_ins += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
+
+                      }
+                      if((vpPSNR+vpPSNR_ins) > max_vpPSNR){
+                        //for(j=0; j < No_tile; j++)
+                        //  ret[j] = tileVer[j];
+                        std::copy (tileVer, tileVer + No_tile, ret);
+                        max_vpPSNR = vpPSNR + vpPSNR_ins;
+                        max_remainBW = remainBW2;
+                        if(index==3 && max_vpPSNR >= 42.39){
+                          double total_br = 0;
+                          // printf("[DUC]: remainBW=%.2f\n", remainBW2);
+                          for(j=0; j < No_tile; j++){
+                            total_br += TILE_SEG_BR[index][j][ret[j]];
+                            // printf("%d ", tileVer[j]);
+                            // if((j+1) % 8 == 0) printf("\n");
+                          }
+                          // printf("[DUC]: total_br=%.2f remainBW=%.2f\n", total_br, est_seg_thrp[index] - total_br);
+                        }
+                      }
+                      count++;
+                    }
+                    //
+                  }//9
+                }//8
+              }//7
+            }//6
+          }//5
+        }//4
+      }//3
+    }//2
+
+}
+return ret;
+}
+int* DecisionEngine::OPT_2_ONLY_PHI_INS(int index){
+  int NUM_EXT_PART = 9;
+  int i[100], j, ii;
+  int EXT_W = 2;
+  double remainBW,remainBW2, max_vpPSNR = 0, vpPSNR, max_remainBW;
+  double tmpsum[100];
+  int* tileVer = (int*) malloc(No_tile * sizeof(int));
+  int* ret = (int*) malloc(No_tile * sizeof(int));
+  // 
+  printf("#[OPT_2_ONLY_PHI_INS] index=%d\n", index);
+  int* vmask = get_visible_tile(est_vp[index]);
+  if(vmask == NULL){
+    printf("(%d, %d)\n", est_vp[index][0], est_vp[index][1]);
+    exit(1);
+  }
+  int* adapt_area = extVmask2(vmask, No_face, No_tile_h, No_tile_v, EXT_W);
+  int count = 0, count2=0;
+  double sum;
+  int WITH_BREAK = 1;
+  if(index < BUFF/INTER){
+    for(j=0; j < No_tile; j++)
+      ret[j] = 0;
+    return ret;
+  }
+  //
+  // printf("#[ISM_ext]: index=%d est_thrp=%.2f(kbps)\n", index, est_seg_thrp[index]);
+  /* display the adapt area */
+  /*
+     for(j=0; j < No_tile; j++){
+     printf("%d ", adapt_area[j]);
+     if((j+1) % 8 == 0) printf("\n");
+     }
+     */
+  // select the lowest version for background tiles
+  remainBW = est_seg_thrp[index];
+  for(j=0; j < No_tile; j++){
+    if(adapt_area[j] == 0){
+      tileVer[j] = 0;
+      remainBW -= TILE_SEG_BR[index][j][0];
+    }
+  }
+  // loop to find optimal versions of tiles in other areas
+  for(i[0] = 0; i[0] < NO_VER; i[0]++){//1
+    //
+    tmpsum[0] = 0;      
+    for(j=0; j < No_tile; j++){
+      if(adapt_area[j] == 1){
+        tmpsum[0] += TILE_SEG_BR[index][j][i[0]];
+      }
+    }
+    if(tmpsum[0] >= remainBW) break;
+    //
+    for(i[1] = 0; i[1] < NO_VER; i[1]++){//2
+      //
+      tmpsum[1] = 0;
+      for(j=0; j < No_tile; j++){
+        if(adapt_area[j] == 2){
+          tmpsum[1] += TILE_SEG_BR[index][j][i[1]];
+        }
+      }
+      if(tmpsum[0] + tmpsum[1] >= remainBW) break;
+      if(i[1] > i[0]) break;
+      //
+      for(i[2] = 0; i[2] < NO_VER; i[2]++){//3
+        //
+        tmpsum[2] = 0;
+        for(j=0; j < No_tile; j++){
+          if(adapt_area[j] == 3){
+            tmpsum[2] += TILE_SEG_BR[index][j][i[2]];
+          }
+        }
+        if(tmpsum[0] + tmpsum[1] + tmpsum[2] >= remainBW) break;
+        if(i[2] > i[0]) break;
+        //
+        for(i[3] = 0; i[3] < NO_VER; i[3]++){//4
+          //
+          tmpsum[3] = 0;
+          for(j=0; j < No_tile; j++){
+            if(adapt_area[j] == 4){
+              tmpsum[3] += TILE_SEG_BR[index][j][i[3]];
+            }
+          }
+          if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] >= remainBW) break;
+          if(i[3] > i[0]) break;
+          //
+          for(i[4] = 0; i[4] < NO_VER; i[4]++){//5
+            //
+            tmpsum[4] = 0;
+            for(j=0; j < No_tile; j++){
+              if(adapt_area[j] == 5){
+                tmpsum[4] += TILE_SEG_BR[index][j][i[4]];
+              }
+            }
+            if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] >= remainBW) break;
+            if(i[4] > i[0]) break;
+            //
+            for(i[5] = 0; i[5] < NO_VER; i[5]++){//6
+              //
+              tmpsum[5] = 0;
+              for(j=0; j < No_tile; j++){
+                if(adapt_area[j] == 6){
+                  tmpsum[5] += TILE_SEG_BR[index][j][i[5]];
+                }
+              }
+              if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] >= remainBW) break;
+              if(i[5] > i[0] || i[5] > i[1] || i[5] > i[2] || i[5] > i[3] || i[5] > i[4]) break;
+              //if(i[5] > i[0] || i[5] > i[1]) break;
+              //
+              for(i[6] = 0; i[6] < NO_VER; i[6]++){//7
+                //
+                tmpsum[6] = 0;
+                for(j=0; j < No_tile; j++){
+                  if(adapt_area[j] == 7){
+                    tmpsum[6] += TILE_SEG_BR[index][j][i[6]];
+                  }
+                }
+                if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] >= remainBW) break;
+                if(i[6] > i[0] || i[6] > i[1] || i[6] > i[2] || i[6] > i[3] || i[6] > i[4]) break;
+                //if(i[6] > i[0] || i[6] > i[2]) break;
+                //
+                for(i[7] = 0; i[7] < NO_VER; i[7]++){//8
+                  //
+                  tmpsum[7] = 0;
+                  for(j=0; j < No_tile; j++){
+                    if(adapt_area[j] == 8){
+                      tmpsum[7] += TILE_SEG_BR[index][j][i[7]];
+                    }
+                  }
+                  if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] + tmpsum[7] >= remainBW) break;
+                  if(i[7] > i[0] || i[7] > i[1] || i[7] > i[2] || i[7] > i[3] || i[7] > i[4]) break;
+                  //if(i[7] > i[0] || i[7] > i[3]) break;
+                  //
+                  for(i[8] = 0; i[8] < NO_VER; i[8]++){
+                    //
+                    tmpsum[8] = 0;
+                    for(j=0; j < No_tile; j++){
+                      if(adapt_area[j] == 9){
+                        tmpsum[8] += TILE_SEG_BR[index][j][i[8]];
+                      }
+                    }
+                    if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] + tmpsum[7] + tmpsum[8] >= remainBW) break;
+                    if(i[8] > i[0] || i[8] > i[1] || i[8] > i[2] || i[8] > i[3] || i[8] > i[4]) break;
+                    //if(i[8] > i[0] || i[8] > i[4]) break;
+                    count2++;
+                    // assign version for each area
+                    sum = 0;
+                    for(j=0; j < No_tile; j++){
+                      if(adapt_area[j] > 0){
+                        tileVer[j] = i[adapt_area[j]-1];
+                        sum += TILE_SEG_BR[index][j][tileVer[j]];
+                      }
+                    }
+                    //
+                    if(sum <= remainBW){
+                      // using remaining bandwidth (if any) to increase tile versions
+                      remainBW2 = remainBW - sum;
+                      int BREAK_FLAG;
+                      int area_id;
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        //for(area_id = 5; area_id >= 2; area_id --){
+                        for(ii=No_tile-1; ii >= 0; ii--){
+                          if(adapt_area[ii] == 1  && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                            remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                            tileVer[ii] += 1;
+                            BREAK_FLAG = 0;
+                          }
+                        }
+                        //}
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        //for(area_id = 5; area_id >= 2; area_id --){
+                        for(ii=0; ii < No_tile; ii++){
+                          if(adapt_area[ii] >=2 && adapt_area[ii] <=5 && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                            remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                            tileVer[ii] += 1;
+                            BREAK_FLAG = 0;
+                          }
+                        }
+                        //}
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        for(area_id = 6; area_id <= 9; area_id ++){
+                          for(ii=0; ii < No_tile; ii++){
+                            if(adapt_area[ii] == area_id && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                              remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                              tileVer[ii] += 1;
+                              BREAK_FLAG = 0;
+                            }
+                          }
+                        }
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      // compute viewport PSNR
+                      vpPSNR = 0;
+                      int tmp_vp[2];
+                      for(j=0; j < INTER; j++){
+                        tmp_vp[0] = est_frame_vp_ins[index * INTER + j][0] + est_err_ins[index][0] * j * 1.0 / (INTER -1);
+                        tmp_vp[1] = est_frame_vp_ins[index * INTER][1];
+                        if(tmp_vp[0] > 180)
+                          tmp_vp[0] -= 360;
+                        if(tmp_vp[0] <= -180)
+                          tmp_vp[0] += 360;
+                        if(tmp_vp[1] > 90)
+                          tmp_vp[1] = 90;
+                        if(tmp_vp[1] < -90)
+                          tmp_vp[1] = -90;
+                        vpPSNR += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
+                      }
+                      if(vpPSNR > max_vpPSNR){
+                        //for(j=0; j < No_tile; j++)
+                        //  ret[j] = tileVer[j];
+                        std::copy (tileVer, tileVer + No_tile, ret);
+                        max_vpPSNR = vpPSNR;
+                        max_remainBW = remainBW2;
+                        if(index==3 && max_vpPSNR >= 42.39){
+                          double total_br = 0;
+                          // printf("[DUC]: remainBW=%.2f\n", remainBW2);
+                          for(j=0; j < No_tile; j++){
+                            total_br += TILE_SEG_BR[index][j][ret[j]];
+                            // printf("%d ", tileVer[j]);
+                            // if((j+1) % 8 == 0) printf("\n");
+                          }
+                          // printf("[DUC]: total_br=%.2f remainBW=%.2f\n", total_br, est_seg_thrp[index] - total_br);
+                        }
+                      }
+                      count++;
+                    }
+                    //
+                  }//9
+                }//8
+              }//7
+            }//6
+          }//5
+        }//4
+      }//3
+    }//2
+
+}
+return ret;
+}
+int* DecisionEngine::OPT_2_ONLY_PHI_AVG(int index){
+  int NUM_EXT_PART = 9;
+  int i[100], j, ii;
+  int EXT_W = 2;
+  double remainBW,remainBW2, max_vpPSNR = 0, vpPSNR, max_remainBW;
+  double tmpsum[100];
+  int* tileVer = (int*) malloc(No_tile * sizeof(int));
+  int* ret = (int*) malloc(No_tile * sizeof(int));
+  // 
+  // printf("#[ISM_ext] (%d, %d)\n", est_vp[index][0], est_vp[index][1]);
+  printf("#[OPT_2_ONLY_PHI_AVG] index=%d\n", index);
+  int* vmask = get_visible_tile(est_vp[index]);
+  if(vmask == NULL){
+    printf("(%d, %d)\n", est_vp[index][0], est_vp[index][1]);
+    exit(1);
+  }
+  int* adapt_area = extVmask2(vmask, No_face, No_tile_h, No_tile_v, EXT_W);
+  int count = 0, count2=0;
+  double sum;
+  int WITH_BREAK = 1;
+  if(index < BUFF/INTER){
+    for(j=0; j < No_tile; j++)
+      ret[j] = 0;
+    return ret;
+  }
+  //
+  // printf("#[ISM_ext]: index=%d est_thrp=%.2f(kbps)\n", index, est_seg_thrp[index]);
+  /* display the adapt area */
+  /*
+     for(j=0; j < No_tile; j++){
+     printf("%d ", adapt_area[j]);
+     if((j+1) % 8 == 0) printf("\n");
+     }
+     */
+  // select the lowest version for background tiles
+  remainBW = est_seg_thrp[index];
+  for(j=0; j < No_tile; j++){
+    if(adapt_area[j] == 0){
+      tileVer[j] = 0;
+      remainBW -= TILE_SEG_BR[index][j][0];
+    }
+  }
+  // loop to find optimal versions of tiles in other areas
+  for(i[0] = 0; i[0] < NO_VER; i[0]++){//1
+    //
+    tmpsum[0] = 0;      
+    for(j=0; j < No_tile; j++){
+      if(adapt_area[j] == 1){
+        tmpsum[0] += TILE_SEG_BR[index][j][i[0]];
+      }
+    }
+    if(tmpsum[0] >= remainBW) break;
+    //
+    for(i[1] = 0; i[1] < NO_VER; i[1]++){//2
+      //
+      tmpsum[1] = 0;
+      for(j=0; j < No_tile; j++){
+        if(adapt_area[j] == 2){
+          tmpsum[1] += TILE_SEG_BR[index][j][i[1]];
+        }
+      }
+      if(tmpsum[0] + tmpsum[1] >= remainBW) break;
+      if(i[1] > i[0]) break;
+      //
+      for(i[2] = 0; i[2] < NO_VER; i[2]++){//3
+        //
+        tmpsum[2] = 0;
+        for(j=0; j < No_tile; j++){
+          if(adapt_area[j] == 3){
+            tmpsum[2] += TILE_SEG_BR[index][j][i[2]];
+          }
+        }
+        if(tmpsum[0] + tmpsum[1] + tmpsum[2] >= remainBW) break;
+        if(i[2] > i[0]) break;
+        //
+        for(i[3] = 0; i[3] < NO_VER; i[3]++){//4
+          //
+          tmpsum[3] = 0;
+          for(j=0; j < No_tile; j++){
+            if(adapt_area[j] == 4){
+              tmpsum[3] += TILE_SEG_BR[index][j][i[3]];
+            }
+          }
+          if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] >= remainBW) break;
+          if(i[3] > i[0]) break;
+          //
+          for(i[4] = 0; i[4] < NO_VER; i[4]++){//5
+            //
+            tmpsum[4] = 0;
+            for(j=0; j < No_tile; j++){
+              if(adapt_area[j] == 5){
+                tmpsum[4] += TILE_SEG_BR[index][j][i[4]];
+              }
+            }
+            if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] >= remainBW) break;
+            if(i[4] > i[0]) break;
+            //
+            for(i[5] = 0; i[5] < NO_VER; i[5]++){//6
+              //
+              tmpsum[5] = 0;
+              for(j=0; j < No_tile; j++){
+                if(adapt_area[j] == 6){
+                  tmpsum[5] += TILE_SEG_BR[index][j][i[5]];
+                }
+              }
+              if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] >= remainBW) break;
+              if(i[5] > i[0] || i[5] > i[1] || i[5] > i[2] || i[5] > i[3] || i[5] > i[4]) break;
+              //if(i[5] > i[0] || i[5] > i[1]) break;
+              //
+              for(i[6] = 0; i[6] < NO_VER; i[6]++){//7
+                //
+                tmpsum[6] = 0;
+                for(j=0; j < No_tile; j++){
+                  if(adapt_area[j] == 7){
+                    tmpsum[6] += TILE_SEG_BR[index][j][i[6]];
+                  }
+                }
+                if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] >= remainBW) break;
+                if(i[6] > i[0] || i[6] > i[1] || i[6] > i[2] || i[6] > i[3] || i[6] > i[4]) break;
+                //if(i[6] > i[0] || i[6] > i[2]) break;
+                //
+                for(i[7] = 0; i[7] < NO_VER; i[7]++){//8
+                  //
+                  tmpsum[7] = 0;
+                  for(j=0; j < No_tile; j++){
+                    if(adapt_area[j] == 8){
+                      tmpsum[7] += TILE_SEG_BR[index][j][i[7]];
+                    }
+                  }
+                  if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] + tmpsum[7] >= remainBW) break;
+                  if(i[7] > i[0] || i[7] > i[1] || i[7] > i[2] || i[7] > i[3] || i[7] > i[4]) break;
+                  //if(i[7] > i[0] || i[7] > i[3]) break;
+                  //
+                  for(i[8] = 0; i[8] < NO_VER; i[8]++){
+                    //
+                    tmpsum[8] = 0;
+                    for(j=0; j < No_tile; j++){
+                      if(adapt_area[j] == 9){
+                        tmpsum[8] += TILE_SEG_BR[index][j][i[8]];
+                      }
+                    }
+                    if(tmpsum[0] + tmpsum[1] + tmpsum[2] + tmpsum[3] + tmpsum[4] + tmpsum[5] + tmpsum[6] + tmpsum[7] + tmpsum[8] >= remainBW) break;
+                    if(i[8] > i[0] || i[8] > i[1] || i[8] > i[2] || i[8] > i[3] || i[8] > i[4]) break;
+                    //if(i[8] > i[0] || i[8] > i[4]) break;
+                    count2++;
+                    // assign version for each area
+                    sum = 0;
+                    for(j=0; j < No_tile; j++){
+                      if(adapt_area[j] > 0){
+                        tileVer[j] = i[adapt_area[j]-1];
+                        sum += TILE_SEG_BR[index][j][tileVer[j]];
+                      }
+                    }
+                    //
+                    if(sum <= remainBW){
+                      // using remaining bandwidth (if any) to increase tile versions
+                      remainBW2 = remainBW - sum;
+                      int BREAK_FLAG;
+                      int area_id;
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        //for(area_id = 5; area_id >= 2; area_id --){
+                        for(ii=No_tile-1; ii >= 0; ii--){
+                          if(adapt_area[ii] == 1  && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                            remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                            tileVer[ii] += 1;
+                            BREAK_FLAG = 0;
+                          }
+                        }
+                        //}
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        //for(area_id = 5; area_id >= 2; area_id --){
+                        for(ii=0; ii < No_tile; ii++){
+                          if(adapt_area[ii] >=2 && adapt_area[ii] <=5 && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                            remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                            tileVer[ii] += 1;
+                            BREAK_FLAG = 0;
+                          }
+                        }
+                        //}
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      while(remainBW2 > 0){
+                        BREAK_FLAG = 1;
+                        for(area_id = 6; area_id <= 9; area_id ++){
+                          for(ii=0; ii < No_tile; ii++){
+                            if(adapt_area[ii] == area_id && tileVer[ii] < NO_VER -1 && (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]) < remainBW2){
+                              remainBW2 = remainBW2 - (TILE_SEG_BR[index][ii][tileVer[ii] +1] - TILE_SEG_BR[index][ii][tileVer[ii]]);
+                              tileVer[ii] += 1;
+                              BREAK_FLAG = 0;
+                            }
+                          }
+                        }
+                        if(BREAK_FLAG == 1)
+                          break;
+                      }
+                      // compute viewport PSNR
+                      vpPSNR = 0;
+                      int tmp_vp[2];
+                      for(j=0; j < INTER; j++){
+                        tmp_vp[0] = est_frame_vp[index * INTER + j][0] + est_err[index][0] * j * 1.0 / (INTER -1);
+                        tmp_vp[1] = est_frame_vp[index * INTER][1];
+                        if(tmp_vp[0] > 180)
+                          tmp_vp[0] -= 360;
+                        if(tmp_vp[0] <= -180)
+                          tmp_vp[0] += 360;
+                        if(tmp_vp[1] > 90)
+                          tmp_vp[1] = 90;
+                        if(tmp_vp[1] < -90)
+                          tmp_vp[1] = -90;
+                        vpPSNR += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
+                      }
+                      if(vpPSNR > max_vpPSNR){
+                        //for(j=0; j < No_tile; j++)
+                        //  ret[j] = tileVer[j];
+                        std::copy (tileVer, tileVer + No_tile, ret);
+                        max_vpPSNR = vpPSNR;
+                        max_remainBW = remainBW2;
+                        if(index==3 && max_vpPSNR >= 42.39){
+                          double total_br = 0;
+                          // printf("[DUC]: remainBW=%.2f\n", remainBW2);
+                          for(j=0; j < No_tile; j++){
+                            total_br += TILE_SEG_BR[index][j][ret[j]];
+                            // printf("%d ", tileVer[j]);
+                            // if((j+1) % 8 == 0) printf("\n");
+                          }
+                          // printf("[DUC]: total_br=%.2f remainBW=%.2f\n", total_br, est_seg_thrp[index] - total_br);
+                        }
+                      }
+                      count++;
+                    }
+                    //
+                  }//9
+                }//8
+              }//7
+            }//6
+          }//5
+        }//4
+      }//3
+    }//2
+
+}
+return ret;
+}
 double DecisionEngine::calc_seg_down_time(double t_start, double BR, double SD, double** bw_trace){
   int N_0;
   double seg_size = BR * SD; // kbits
@@ -768,11 +2882,12 @@ void DecisionEngine::thrp_estimator(int index){
   }
 }
 void DecisionEngine::vp_estimator(int index){
-  int i, VP_EST_WIN;
+  int i, VP_EST_WIN, VP_EST_WIN_INS;
   double v_phi;
   double v_theta;
   int delta_phi, delta_theta;;
   VP_EST_WIN = INTER;
+  VP_EST_WIN_INS = INTER / 4;
   net_delay[index] = 50; // ms --> parameterize needed!
   // printf("#[vp_estimator] index=%d\n", index);
   switch(VP_EST_METHOD){
@@ -811,16 +2926,22 @@ void DecisionEngine::vp_estimator(int index){
         for(i=0; i < INTER; i++){
           est_frame_vp[index * INTER + i][0] = 0;
           est_frame_vp[index * INTER + i][1] = 0;
+          est_frame_vp_ins[index * INTER + i][0] = 0;
+          est_frame_vp_ins[index * INTER + i][1] = 0;
         }
         est_err[index][0] = 0;
         est_err[index][1] = 0;
+        est_err_ins[index][0] = 0;
+        est_err_ins[index][1] = 0;
         //
         cur_vp[index][0] = 0;
         cur_vp[index][1] = 0;     
         //
         est_vp[index][0] = 0;
         est_vp[index][1] = 0;
-        // angular speed
+        est_vp_ins[index][0] = 0;
+        est_vp_ins[index][1] = 0;
+// angular speed
         ang_speed[index] = 0;
       }else{
         //last_frame_id = index * INTER - BUFF;
@@ -831,21 +2952,39 @@ void DecisionEngine::vp_estimator(int index){
         if(last_frame_id[index-1] < BUFF){
           est_err[index][0] = 0;
           est_err[index][1] = 0;
+          est_err_ins[index][0] = 0;
+          est_err_ins[index][1] = 0;
         }else{
+          // average
           est_err[index][0] = -est_frame_vp[last_frame_id[index-1]][0] + htrace[last_frame_id[index-1]][0];
           if(est_err[index][0] < -180)
             est_err[index][0] += 360;
           else if(est_err[index][0] > 180)
             est_err[index][0] -= 360;
+          if(abs(est_err[index][0]) > max_est_err)
+            max_est_err = abs(est_err[index][0]);
           // theta
           est_err[index][1] = - est_frame_vp[last_frame_id[index-1]][1] + htrace[last_frame_id[index-1]][1];
           if(est_err[index][1] < -90)
             est_err[index][1] += 180;
           else if(est_err[index][1] > 90)
             est_err[index][1] -= 180;
+         // instant 
+          est_err_ins[index][0] = -est_frame_vp_ins[last_frame_id[index-1]][0] + htrace[last_frame_id[index-1]][0];
+          if(est_err_ins[index][0] < -180)
+            est_err_ins[index][0] += 360;
+          else if(est_err_ins[index][0] > 180)
+            est_err_ins[index][0] -= 360;
+          // theta
+          est_err_ins[index][1] = - est_frame_vp_ins[last_frame_id[index-1]][1] + htrace[last_frame_id[index-1]][1];
+          if(est_err_ins[index][1] < -90)
+            est_err_ins[index][1] += 180;
+          else if(est_err_ins[index][1] > 90)
+            est_err_ins[index][1] -= 180;
         } 
         //
         // calculate move speed
+        // Average
         // phi
         if(last_frame_id[index-1] >= VP_EST_WIN){
           delta_phi = htrace[last_frame_id[index-1]][0] - htrace[last_frame_id[index-1]-VP_EST_WIN][0];
@@ -877,6 +3016,38 @@ void DecisionEngine::vp_estimator(int index){
           speed[index][1] = 0;
         else
           speed[index][1] = delta_theta/(1.0 * ((last_frame_id[index-1] >= VP_EST_WIN)?VP_EST_WIN:last_frame_id[index-1]));
+        // instant
+        // phi
+        if(last_frame_id[index-1] >= VP_EST_WIN_INS){
+          delta_phi = htrace[last_frame_id[index-1]][0] - htrace[last_frame_id[index-1]-VP_EST_WIN_INS][0];
+        }
+        else{
+          delta_phi = htrace[last_frame_id[index-1]][0] - htrace[0][0];
+        }
+        if(delta_phi < -180)
+          delta_phi += 360;
+        else
+          if(delta_phi > 180)
+            delta_phi -= 360;
+        if(last_frame_id[index-1] == 0)
+          speed_ins[index][0] = 0;
+        else
+          speed_ins[index][0] = delta_phi/(1.0 * ((last_frame_id[index-1] >= VP_EST_WIN_INS)?VP_EST_WIN_INS:last_frame_id[index-1]));
+        // theta
+        if(last_frame_id[index-1] >= VP_EST_WIN_INS)
+          delta_theta = htrace[last_frame_id[index-1]][1] - htrace[last_frame_id[index-1]-VP_EST_WIN_INS][1];
+        else
+          delta_theta = htrace[last_frame_id[index-1]][1] - htrace[0][1];
+        // printf("delta_theta=%d\n", delta_theta);
+        if(delta_theta < -90)
+          delta_theta += 180;
+        else
+          if(delta_theta > 90)
+            delta_theta -= 180;
+        if(last_frame_id[index-1] == 0)
+          speed_ins[index][1] = 0;
+        else
+          speed_ins[index][1] = delta_theta/(1.0 * ((last_frame_id[index-1] >= VP_EST_WIN_INS)?VP_EST_WIN_INS:last_frame_id[index-1]));
 
         // estimate viewport 
         for(i=0; i < INTER; i++){
@@ -908,6 +3079,36 @@ void DecisionEngine::vp_estimator(int index){
           while(est_frame_vp_2[index * INTER + i][1] <= -90)//
             est_frame_vp_2[index * INTER + i][1] += 90;
           est_err_ang_2[index*INTER+i] = acos(sin(htrace[index*INTER+i][1]*M_PI/180) * sin(est_frame_vp_2[index*INTER+i][1]*M_PI/180) + cos(htrace[index*INTER+i][1]*M_PI/180) * cos(est_frame_vp_2[index*INTER+i][1]*M_PI/180) * cos(abs(est_frame_vp_2[index*INTER+i][0] - htrace[index*INTER+i][0])*M_PI/180)) / M_PI * 180;
+          // instant viewport
+          est_frame_vp_ins[index * INTER + i][0] = (int) (cur_vp[index][0] + speed_ins[index][0] * (buff_level[index-1]*FPS + i));
+          est_frame_vp_ins[index * INTER + i][1] = (int) (cur_vp[index][1] + speed_ins[index][1] * (buff_level[index-1]*FPS + i));
+          // phi
+          while(est_frame_vp_ins[index * INTER + i][0] >= 180)
+            est_frame_vp_ins[index * INTER + i][0] -= 360;
+          while(est_frame_vp_ins[index * INTER + i][0] < -180)
+            est_frame_vp_ins[index * INTER + i][0] += 360;
+          // theta
+          while(est_frame_vp_ins[index * INTER + i][1] >= 90)
+            est_frame_vp_ins[index * INTER + i][1] -= 90;
+          while(est_frame_vp_ins[index * INTER + i][1] <= -90)//
+            est_frame_vp_ins[index * INTER + i][1] += 90;
+          // printf("(%d,%d) - (%d, %d)\n", est_frame_vp_ins[index * INTER + i][0], est_frame_vp_ins[index * INTER + i][1], htrace[index * INTER + i][0],htrace[index * INTER + i][1]);
+          est_err_ang_ins[index*INTER+i] = acos(sin(htrace[index*INTER+i][1]*M_PI/180) * sin(est_frame_vp_ins[index*INTER+i][1]*M_PI/180) + cos(htrace[index*INTER+i][1]*M_PI/180) * cos(est_frame_vp_ins[index*INTER+i][1]*M_PI/180) * cos(abs(est_frame_vp_ins[index*INTER+i][0] - htrace[index*INTER+i][0])*M_PI/180)) / M_PI * 180;
+          // estimation with errors
+          est_frame_vp_ins_2[index*INTER + i][0] = (int)(est_frame_vp_ins[index*INTER+i][0] + est_err_ins[index][0] * i * 1.0 / (INTER-1));
+          est_frame_vp_ins_2[index*INTER + i][1] = (int)(est_frame_vp_ins[index*INTER+i][1] + est_err_ins[index][1] * i * 1.0 / (INTER-1));
+          // phi
+          while(est_frame_vp_ins_2[index * INTER + i][0] >= 180)
+            est_frame_vp_ins_2[index * INTER + i][0] -= 360;
+          while(est_frame_vp_ins_2[index * INTER + i][0] < -180)
+            est_frame_vp_ins_2[index * INTER + i][0] += 360;
+          // theta
+          while(est_frame_vp_ins_2[index * INTER + i][1] >= 90)
+            est_frame_vp_ins_2[index * INTER + i][1] -= 90;
+          while(est_frame_vp_ins_2[index * INTER + i][1] <= -90)//
+            est_frame_vp_ins_2[index * INTER + i][1] += 90;
+          est_err_ang_ins_2[index*INTER+i] = acos(sin(htrace[index*INTER+i][1]*M_PI/180) * sin(est_frame_vp_ins_2[index*INTER+i][1]*M_PI/180) + cos(htrace[index*INTER+i][1]*M_PI/180) * cos(est_frame_vp_ins_2[index*INTER+i][1]*M_PI/180) * cos(abs(est_frame_vp_ins_2[index*INTER+i][0] - htrace[index*INTER+i][0])*M_PI/180)) / M_PI * 180;
+
         }
         est_vp[index] = est_frame_vp[index * INTER];
         ang_speed[index] = sqrt(speed[index][0] * speed[index][0] + speed[index][1] * speed[index][1]);
@@ -926,6 +3127,7 @@ void DecisionEngine::vp_estimator(int index){
   }
   //
   est_vp[index] = est_frame_vp[index * INTER];
+  est_vp_ins[index] = est_frame_vp_ins[index * INTER];
 }
 int* DecisionEngine::DASH(int index){
   int* tile = new int[No_tile];
@@ -950,9 +3152,6 @@ int* DecisionEngine::EXT_ALL(int index, int ext_width){
   if(index >=  BUFF / INTER){
     vmask = get_visible_tile(est_vp[index]);
     vmask = extVmask(vmask, No_face, No_tile_h, No_tile_v, ext_width);
-    if(index==5 && ext_width == 0){
-      showTileVersion(vmask, No_tile_h, No_tile_v);
-    }
   }
   return ROI(TILE_SEG_BR[index], No_tile, NO_VER, vmask, est_seg_thrp[index]);
 }
@@ -4027,7 +6226,10 @@ void DecisionEngine::write_result_8(int NO_SEG, int HTRACE, int bwtrace_id){
   }
   // if(TILE_SELECT_METHOD > 1){
     fprintf(log_dec, "id\testThrp(kbps)\tbitrate(kbps)\tvp-bitrate(kbps)\tvp-psnr(dB)\tcalcTime(ms)\text_width\n");
-    fprintf(log_frame_psnr, "fid\tdecid\test_vp_psnr\tphi\ttheta\test_phi_1\test_theta_1\terr_1\test_phi_2\test_theta_2\terr_2\n");
+    fprintf(log_frame_psnr, "fid\tdecid\test_vp_psnr\tphi\ttheta\test_phi_1\test_theta_1\terr_1\test_phi_2\test_theta_2\terr_2\t");
+    fprintf(log_frame_psnr, "est_phi_ins\test_theta_ins\terr_ins\t");
+    fprintf(log_frame_psnr, "est_phi_ins_2\test_theta_ins_2\terr_ins_2");
+    fprintf(log_frame_psnr, "\n");
     for(int ii=0; ii < NO_SEG; ii++){
       fprintf(log_tile_ver, "\nseg #%d calcTime: %d(ms)\n", ii, proc_time[ii]);
       for(int i=0; i < No_tile_v; i++){
@@ -4054,6 +6256,8 @@ void DecisionEngine::write_result_8(int NO_SEG, int HTRACE, int bwtrace_id){
         fprintf(log_frame_psnr, "%d\t%d\t%.2f\t%d\t%d\t", ii * INTER + k, ii, vpsnr[ii * INTER + k], htrace[ii*INTER +k][0], htrace[ii*INTER +k][1]);
         fprintf(log_frame_psnr, "%d\t%d\t%.2f\t", est_frame_vp[ii*INTER + k][0], est_frame_vp[ii*INTER + k][1], est_err_ang[ii*INTER+k]);
         fprintf(log_frame_psnr, "%d\t%d\t%.2f\t", est_frame_vp_2[ii*INTER + k][0], est_frame_vp_2[ii*INTER + k][1], est_err_ang_2[ii*INTER+k]);
+        fprintf(log_frame_psnr, "%d\t%d\t%.2f\t", est_frame_vp_ins[ii*INTER + k][0], est_frame_vp_ins[ii*INTER + k][1], est_err_ang_ins[ii*INTER+k]);
+        fprintf(log_frame_psnr, "%d\t%d\t%.2f\t", est_frame_vp_ins_2[ii*INTER + k][0], est_frame_vp_ins_2[ii*INTER + k][1], est_err_ang_ins_2[ii*INTER+k]);
         /*
         for(int j=0; j < NO_VER; j++)
           fprintf(log_frame_psnr, "%.2f\t", lowQLPixelPercent[ii*INTER+k][j]);

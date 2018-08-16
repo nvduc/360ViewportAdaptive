@@ -1,0 +1,41 @@
+- compared proposed (OPT-1, OPT-2) with Ghent and 360Prob
++ seg #1
+  - Viewports are stable, and accurately estimated. Thus, OPT-1, OPT-2, and ROI have similar and highest performance.
+  - Ghent has the second highest V-PSNR. It extends the viewport by 1 tile. This is because that all tiles in a given area must have the same version. If this constraint is relaxed, Ghent should have the same performance as that of ROI.
+  - ProbDASH has the lowest V-PSNR, because it consider a lot of extension tiles, equal to the number of visible tiles.
++ seg #2
+  - Viewports change during the intervals. Yet, the estimated viewports are stable as it is made based on head movements during previous intervals. 
+  - ROI, OPT-1, OPT-2, and Ghent have similar behaviors. For the Ghent method, this is because that the last viewed viewport is alsmost indentical to the estimated viewport. The OPT-1 and OPT-2 options do not consider any extension tiles because 1) the estimated viewports are stable and 2) the estimation error is close to zero. 
+  - The ProbDASH achieves the highest V-PSNR because it considers a number of extension tiles that can deal with estimation errors.
++ seg #3
+  - Viewports continue to change in the same direction, but the estimation errors are quite small (i.e., 5-12 degrees).  
+  - Ghent has the lowest V-PSNR. This implies that, considering the current viewport (i.e., the viewport of the last viewed tile_ver) is not effective in this case, causing wasted bandwidth. This problem occurs when the head movement directions are quite stable. As viewport estimation is delayed by the current buffer level, the current viewport is likely not visible during the course of the considered interval. 
+  - ROI, OPT-1, and OPT-2, again, have similar behaviors. This is because that, the visible tiles associated with the estimated viewport of the first frame can cover the visible tiles of all frames in this interval, except for the last frame. This depdends on 1) the position of the estimated vp (first frame), 2) the estimated viewports, and 3) the estimation errors of the last played frame. In this case, though the estimation errors increase, the visible tiles of the first frame is still cover the visible tiles of the whole interval. As a result, no extension tiles are considered in OPT-1 and OPT-2 options. 
+  - The ProbDASH achieves the most stable V-PSNR, because it extends regardless of the movements. Yet, the avg. V-PSNR is only comparable to that of ROI since a significant amount of bandwidth are wasted. 
+  - The ROI, OPT-1, and OPT-2 experience V-PSNR degradations because the estimatior errors causes some visible tiles to be allocated very low quality.
++ seg #4
+  - The viewport continues changing, but at small degrees. The visible tiles of the first frame can cover the visible tiles of all frames in the interval. 
+  - The estimated viewports, though incurring some errors, are accurate to cover all actual visible tiles. Thus, the ROI performs well.  
+  - The Ghent methods selects a version of 3 for 20 extension tiles, causing significant bandwidth waste. Hence, the visible tiles versions are reduced, and so the V-PSNR.
+  - Similar to the Ghent method, the probDASH method spends a signifcant amount of bandwidth for 22 extension tiles that turns out to be wasted. As a result, its performance is very low.
+  - The OPT-1 method does not consider any extension tiles. This is because that the visible tiles at the end of the segment are the same as those of the first one.
+  - Similar to the OPT-1, the OPT-2 does not consider any ext. tiles. This is probably because that head movements during the intervals are not enough so that selecting the highest possible versions for the visible tiles still results in the highest est.V-PSNR.
++ seg #5
+  - The viewports change slightly, mostly in the pitch component. The coverage of the visible tiles of the first frame is almost sufficient for the entire interval. VP est. errors are between 10 and 20 degrees, and increased to 10 - 30 degrees if considering the est. error of the last displayed frame.    
+  - The behaviors of all methods are very similar to that of the seg #4. This is because 1) the est. error at the first frame is small, 2) viewports are stable, and 3) the est. errors are small.
++ seg #6
+ - The viewports are very stable. Yet, the viewports estimation errors causes mismatches between the estimated and actual visible tiles. 
+ - The OPT-2, though considering a number of ext. tiles, results in the lowest V-PSNR, because non of the ext. tiles turn out to be effective. The main reason is that, the actual head-moving directions are opposite with the estimated one. As the OPT-2 tends to extend the viewport according to the estimated moving path, it experiences very low V-PSNR in this case.
+ - The OPT-1, on the other hand, extending in all directions. As a result, all the mismatches in the visible tiles can be covered.    
+ - The ProbDASH, though covering all visible tiles, has low V-PSNR because it consum much higher bandwidth for other extension tiles.  
+ - Similar to the OPT-1 and the ProbDASH methods, the Ghent method can cover all visible tiles. Yet, it allocate signifcant amount of the bandwidth to the ext. tiles.
++ seg #7
+  - Same as segment #6.
++ seg #8
+  - The viewports change slightly. The estimation errors are also very small.
+  - The ROI method achieves the highest V-PSNR. It seems that the required ext. tiles does not contribute much to the viewport quality. Thus, maximizing the visible tile versions brings the highest V-PSNR.
+  - The OPT-2 method can extend the viewport according to the head movements. This case, this can improve the quality considerably. The Ghent and ProbDASh can deal with prediction errors, but they results in significant bandwidth waste.
+
+  paste log_frame_TRACE_27_BWTRACE_0_METHOD_3_INTER_32_BUFF_32_EST_1.txt log_frame_TRACE_27_BWTRACE_0_METHOD_4_INTER_32_BUFF_32_EST_1.txt log_frame_TRACE_27_BWTRACE_0_METHOD_5_INTER_32_BUFF_32_EST_1.txt log_frame_TRACE_27_BWTRACE_0_METHOD_15_INTER_32_BUFF_32_EST_1.txt log_frame_TRACE_27_BWTRACE_0_METHOD_18_INTER_32_BUFF_32_EST_1.txt log_frame_TRACE_27_BWTRACE_0_METHOD_20_INTER_32_BUFF_32_EST_1.txt > log_frame_TRACE_27_BWTRACE_0_INTER_32_BUFF_32_EST_1_OPT-2-ext.txt
+
+  paste log_tile_ver_TRACE_27_BWTRACE_0_METHOD_3_INTER_32_BUFF_32_EST_1.txt log_tile_ver_TRACE_27_BWTRACE_0_METHOD_4_INTER_32_BUFF_32_EST_1.txt log_tile_ver_TRACE_27_BWTRACE_0_METHOD_5_INTER_32_BUFF_32_EST_1.txt log_tile_ver_TRACE_27_BWTRACE_0_METHOD_15_INTER_32_BUFF_32_EST_1.txt log_tile_ver_TRACE_27_BWTRACE_0_METHOD_18_INTER_32_BUFF_32_EST_1.txt log_tile_ver_TRACE_27_BWTRACE_0_METHOD_20_INTER_32_BUFF_32_EST_1.txt > log_tile_ver_TRACE_27_BWTRACE_0_INTER_32_BUFF_32_EST_1_OPT-2-ext.txt
