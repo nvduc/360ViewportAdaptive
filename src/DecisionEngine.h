@@ -85,6 +85,7 @@ class DecisionEngine{
     double** lowQLPixelPercent; // percentage of pixel of each quality version in the viewport
     int** est_frame_vp;
     int** est_frame_vp_2;
+    int** est_frame_vp_2_opp;
     int** est_frame_vp_ins;
     int** est_frame_vp_ins_2;
     int** est_frame_vp_err_max_left;
@@ -94,7 +95,8 @@ class DecisionEngine{
     int** est_err;
     int** est_err_ins;
     int** est_err_frame;
-    int max_est_err;
+    int* max_est_err;
+    double* avg_est_err;
     int** cur_vp;
     double** speed;
     double** speed_ins;
@@ -164,8 +166,11 @@ class DecisionEngine{
     int* OPT_2_ONLY_PHI_ALL_INS(int index);
     int* OPT_2_ONLY_PHI_ERR_AVG(int index);
     int* OPT_2_ONLY_PHI_ERR_INS(int index);
+    int* OPT_2_DYNAMIC(int index);
+    int* PROPOSED_EXT_TWO_SIDES(int index, int ext_err);
     int* new_idea(int index);
     int* EQUAL_THETA_0(int index);
+    int* EQUAL_THETA_0_EXT(int index, int ext_width);
     // 
     int* get_visible_tile(int* vp);
     int* get_visible_pixel(int* vp);

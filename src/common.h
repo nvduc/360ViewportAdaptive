@@ -26,6 +26,7 @@ double min(double, double);
 double max(double, double);
 int min(int, int);
 int max(int, int);
+int* norm_vp_range(int*);
 // 
 struct run_cfg
 {
