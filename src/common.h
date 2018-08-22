@@ -27,6 +27,13 @@ double max(double, double);
 int min(int, int);
 int max(int, int);
 int* norm_vp_range(int*);
+bool compare_string(string, string);
+int median(vector<int>);
+int median(vector<int>, int N);
+double average(vector<int>);
+double average(vector<int>, int N);
+int maximum(vector<int>);
+int maximum(vector<int>, int N);
 // 
 struct run_cfg
 {

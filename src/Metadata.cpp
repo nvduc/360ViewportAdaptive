@@ -12,6 +12,7 @@
 #include <cstring>
 #include <dirent.h>
 #include <fstream>
+#include <algorithm>
 using namespace std;
 #ifdef DEBUG2
 int main(int argc, char* argv[]){
@@ -164,7 +165,7 @@ int main(int argc, char* argv[]){
   int htrace_id = 1;
   int HTRACE_NUM = 300;
   double totalBR;
-  std::vector<int> tileList = {15, 22};
+  std::vector<int> tileList = {266, 267, 270, 272, 298, 304, 306};
   int* pixel = meta.video_info.tile[TILING].pixel[vp[0]][vp[1]+90];
   double* tileWeight = new double[No_tile];
   // for(i=0; i < tileList.size(); i++){
@@ -176,9 +177,8 @@ int main(int argc, char* argv[]){
   //   printf("\n");
   // }
   int** est_frame_vp;
-  for(htrace_id = 0; htrace_id < HTRACE_NUM; htrace_id++){
-//  for(htrace_id = 94; htrace_id < 95; htrace_id++){
-    est_frame_vp = meta.est_head_trace(htrace_id, FRAME, INTER, BUFF);
+  for(htrace_id = 0; htrace_id < tileList.size(); htrace_id++){
+    est_frame_vp = meta.est_head_trace(tileList.at(htrace_id), FRAME, INTER, BUFF);
   }
   exit(1);
   for(tid=0; tid < No_tile; tid++)
@@ -550,31 +550,42 @@ int Metadata::load_headtrace_info_2(){ // only phi
 
 }
 int Metadata::load_headtrace_info(){
-  char buff[1024], buff2[1024];
-  int i,j,trace_id;
+  string dir = "data/head_trace/";
+  string fileName;
+  char* buff = new char[1024];
+  char* buff2 = new char[1024];
+  int i,j,trace_id, no_trace;
   vector <double> v;
   int rows, cols;
   sprintf(buff, "data/head_trace/");
   DIR* dirp = opendir(buff);
   struct dirent * dp;
+  std::vector<string> fileList;
   //
   video_info.htrace.trace = init3dArrayInt(video_info.htrace.No_user,video_info.NO_FRAME, 2);
-  trace_id = 0;
+  no_trace = 0;
   while ((dp = readdir(dirp)) != NULL) {
-    printf("%s %d\n", dp->d_name, trace_id);
-    if(strstr(dp->d_name, "xyz") == NULL)
+    //printf("%s %d\n", dp->d_name, no_trace);
+    if(strstr(dp->d_name, "xyz_vid_") == NULL)
       continue;
-    sprintf(buff2,"%s%s", buff, dp->d_name);
-    if(import_matrix_from_txt_file(buff2, v, rows, cols) != 0)
+    fileList.push_back(dp->d_name);
+    no_trace ++;
+  }
+  closedir(dirp);
+  // sort files by name
+  std::sort(fileList.begin(), fileList.end(), compare_string);
+  // load head trace info
+  for(trace_id = 0; trace_id < no_trace; trace_id++){
+    fileName = dir + fileList.at(trace_id).c_str();
+    cout << trace_id << ":" << fileName << endl;
+    if(import_matrix_from_txt_file(fileName.c_str(), v, rows, cols) != 0)
      return -1; 
     for(i=0; i < video_info.NO_FRAME; i++){
       for(j=0; j < cols; j++){
         video_info.htrace.trace[trace_id][i][j] = v[(i+1) * cols + j];
       }
     }
-    trace_id ++;
   }
-  closedir(dirp);
   return 0;
 }
 int** Metadata::est_head_trace(int htrace_id, int FRAME, int INTER,  int BUFF){

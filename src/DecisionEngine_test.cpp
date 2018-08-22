@@ -30,7 +30,7 @@ int main(int argc, char* argv[]){
   int phi_num = 360/15;
   int theta_num = 180/15 + 1;
   int speed_num = 90/5 + 1;
-  int htrace_num = 300;
+  int htrace_num = 400;
   double*** avgVPSNR = init3dArrayDouble(phi_num, theta_num,20);
   double**** avgVPSNR_case2 = init4dArrayDouble(phi_num, theta_num, speed_num, 20);
   double** avgVPSNR_case6 = init2dArrayDouble(htrace_num, 20);
@@ -592,7 +592,9 @@ int main(int argc, char* argv[]){
                 adaptInfo.TILE_SELECT_METHOD = rcfg.METHOD_LIST[method_id];
                 gettimeofday(&t_start, NULL);
                 /* init decision engine */
-                for(htrace_id=0; htrace_id < rcfg.HEADTRACE_NUM; htrace_id++){
+                //for(htrace_id = rcfg.HEADTRACE_LIST[0]; htrace_id <= rcfg.HEADTRACE_LIST[1]; htrace_id++){
+                //  adaptInfo.HTRACE_ID = htrace_id;
+                for(htrace_id = 0; htrace_id < rcfg.HEADTRACE_NUM; htrace_id++){
                   adaptInfo.HTRACE_ID = rcfg.HEADTRACE_LIST[htrace_id];
                   DecisionEngine decEngine(meta, adaptInfo);
                   vname = decEngine.metadata->video_info.name.c_str();
@@ -607,7 +609,8 @@ int main(int argc, char* argv[]){
                   decEngine.calc_result(rcfg.NO_SEG);
                   avgVPSNR_case6[htrace_id][method_id] = decEngine.avgVPSNR;
                   /* write adaptation results to files */
-                  decEngine.write_result_8(rcfg.NO_SEG, rcfg.HEADTRACE_LIST[htrace_id], bwtrace_id);
+                  //decEngine.write_result_8(rcfg.NO_SEG, htrace_id, bwtrace_id);
+                  decEngine.write_result_8(rcfg.NO_SEG, adaptInfo.HTRACE_ID, bwtrace_id);
                   gettimeofday(&t_end, NULL);
                   printf("#[method #%d] calc time: %.2f(ms)\n", method_id, tvdiff_us(&t_end, &t_start)/1000.0);
                 }

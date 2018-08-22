@@ -84,18 +84,29 @@ class DecisionEngine{
     double* visiTileOut_br;
     double** lowQLPixelPercent; // percentage of pixel of each quality version in the viewport
     int** est_frame_vp;
+    int** est_frame_vp_no_inpo;
+    int** est_frame_vp_opp;
     int** est_frame_vp_2;
     int** est_frame_vp_2_opp;
     int** est_frame_vp_ins;
     int** est_frame_vp_ins_2;
     int** est_frame_vp_err_max_left;
+    int** est_frame_vp_err_max_left_half;
     int** est_frame_vp_err_max_right;
+    int** est_frame_vp_err_max_right_half;
+    int** est_frame_vp_err_median_left;
+    int** est_frame_vp_err_median_right;
     int** est_vp;
     int** est_vp_ins;
     int** est_err;
     int** est_err_ins;
     int** est_err_frame;
     int* max_est_err;
+    int* max_est_err_frame;
+    int* med_est_err;
+    int* med_est_err_frame;
+    std::vector<int> estErrList;
+    std::vector<int> estErrListFrame;
     double* avg_est_err;
     int** cur_vp;
     double** speed;
@@ -151,6 +162,7 @@ class DecisionEngine{
     int* ISM_same_ver(int index, int ext_width);
     int* ISM_same_ver(int index);
     int* ISM_ext(int index);
+    int* ISM_ext_quick(int index);
     int* Ghent(int index);
     int* Ireland(int index);
     int* Ireland_v2(int index);
@@ -167,8 +179,16 @@ class DecisionEngine{
     int* OPT_2_ONLY_PHI_ERR_AVG(int index);
     int* OPT_2_ONLY_PHI_ERR_INS(int index);
     int* OPT_2_DYNAMIC(int index);
+    int* OPT_2_LAST_ERR(int index);
+    int* OPT_2_MAX_ERR(int index);
+    int* OPT_2_NO_ERR(int index);
+    int* OPT_2_NO_INPO(int index);
+    int* OPT_2_ADAPTIVE(int index);
+    int* OPT_2_ERR_TWO_SIDE(int index, int ext_err);
     int* PROPOSED_EXT_TWO_SIDES(int index, int ext_err);
     int* new_idea(int index);
+    int* new_idea_half_max(int index);
+    int* new_idea_new_idea(int index);
     int* EQUAL_THETA_0(int index);
     int* EQUAL_THETA_0_EXT(int index, int ext_width);
     // 

@@ -31,7 +31,99 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <string>
+#include <algorithm>
 using namespace std;
+int maximum(vector<int> scores, int size){
+  if (size == 0)
+  {
+    return 0;  // Undefined, really.
+  }
+  else
+  {
+    sort(scores.begin(), scores.begin()+size);
+    return scores[size-1];    
+  }
+}
+int maximum(vector<int> scores){
+  size_t size = scores.size();
+
+  if (size == 0)
+  {
+    return 0;  // Undefined, really.
+  }
+  else
+  {
+    sort(scores.begin(), scores.end());
+    return scores[size-1];    
+  }
+}
+double average(vector<int> scores){
+  double ret = 0;
+  for(int i=0; i < scores.size(); i++)
+   ret += scores.at(i) * 1.0 / scores.size(); 
+  return ret;
+}
+double average(vector<int> scores, int N){
+  double ret = 0;
+  for(int i=0; i < N; i++)
+   ret += scores.at(i) * 1.0 / N; 
+  return ret;
+}
+int median(vector<int> scores, int size){
+  if (size == 0)
+  {
+    return 0;  // Undefined, really.
+  }
+  else
+  {
+    sort(scores.begin(), scores.begin()+size);
+    if (size % 2 == 0)
+    {
+      return (scores[size / 2 - 1] + scores[size / 2]) / 2;
+    }
+    else 
+    {
+      return scores[size / 2];
+    }
+  }
+}
+
+int median(vector<int> scores){
+  size_t size = scores.size();
+
+  if (size == 0)
+  {
+    return 0;  // Undefined, really.
+  }
+  else
+  {
+    sort(scores.begin(), scores.end());
+    if (size % 2 == 0)
+    {
+      return (scores[size / 2 - 1] + scores[size / 2]) / 2;
+    }
+    else 
+    {
+      return scores[size / 2];
+    }
+  }
+}
+bool compare_string(string a, string b){
+  if(a.compare(8,1,b,8,1) != 0){
+    if(a.compare(b) <= 0)
+      return true;
+    return false;
+  }
+  if(a.size() == b.size()){
+    if(a.compare(b) <= 0)
+      return true;
+    return false;
+  }
+  if(a.size() < b.size())
+    return true;
+  return false;
+}
 int* norm_vp_range(int* vp){
   int* norm_vp = new int[2];
   norm_vp[0] = vp[0];
