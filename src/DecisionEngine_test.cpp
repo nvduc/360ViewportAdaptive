@@ -615,12 +615,12 @@ int main(int argc, char* argv[]){
                   printf("#[method #%d] calc time: %.2f(ms)\n", method_id, tvdiff_us(&t_end, &t_start)/1000.0);
                 }
               }
+              }
             }
           }
-        }
-        break;
+      break;
     }
-}
+  }
   return 1;
 }
 

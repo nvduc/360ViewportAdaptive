@@ -146,6 +146,7 @@ class DecisionEngine{
     int* get_next_segment(int index);
     void down_next_segment(int index);
     void down_next_segment_2(int index);
+    void down_next_segment_3(int index);
     double calc_seg_down_time(double t_start, double br,double SD, double** bw_trace);
     void thrp_estimator(int index);
     void vp_estimator(int index);
@@ -191,6 +192,11 @@ class DecisionEngine{
     int* new_idea_new_idea(int index);
     int* EQUAL_THETA_0(int index);
     int* EQUAL_THETA_0_EXT(int index, int ext_width);
+    int* RE_DOWNLOAD(int index);
+    //
+    int* ROI_ALL_FRAME(double** TILE_BR, double** TILE_MSE, double est_thrp, int** est_frame_vp);
+    double DOWN_SEG_PART_1(int* tileVer,double** TILE_BR,double delta_t,int* tile_down_status, double** bw_trace, double seg_down_start_time);
+    int* ROI_ALL_FRAME(double** TILE_BR, double** TILE_MSE, double est_thrp, int** est_frame_vp, int* tile_down_status, int* curTileVer);
     // 
     int* get_visible_tile(int* vp);
     int* get_visible_pixel(int* vp);

@@ -26,7 +26,7 @@ double min(double, double);
 double max(double, double);
 int min(int, int);
 int max(int, int);
-int* norm_vp_range(int*);
+void norm_vp_range(int*);
 bool compare_string(string, string);
 int median(vector<int>);
 int median(vector<int>, int N);

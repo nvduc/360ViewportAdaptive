@@ -318,97 +318,29 @@ int* DecisionEngine::get_next_segment(int index){
       tile_ver[index] = Ireland(index);
       break;
     case 8:
-      tile_ver[index] = EXT_ALL_same_ver(index, 0); // ROI
-      break;
-    case 9:
-      tile_ver[index] = ISM_same_ver(index);
-      break;
-    case 10:
-      tile_ver[index] = Ghent_opt(index);
-      break;
-    case 11:
       tile_ver[index] = BellLab(index);
       break;
-    case 12:
+    case 9:
       tile_ver[index] = ProbDASH(index);
       break;
-    case 13:
-      tile_ver[index] = Ireland_v2(index);
-      break;
-    case 14:
+    case 10:
       tile_ver[index] = OPTIMAL(index);
       break;
-    case 15:
-      tile_ver[index] = OPT_2_ONLY_PHI_AVG(index);
-      break;
-    case 16:
-      tile_ver[index] = OPT_2_ONLY_PHI_INS(index);
-      break;
-    case 17:
-      tile_ver[index] = OPT_2_ONLY_PHI_COMBI(index);
-      break;
-    case 18:
-      tile_ver[index] = OPT_2_ONLY_PHI_ALL_AVG(index);
-      break;
-    case 19:
-      tile_ver[index] = OPT_2_ONLY_PHI_ALL_INS(index);
-      break;
-    case 20:
-      tile_ver[index] = OPT_2_ONLY_PHI_ERR_AVG(index);
-      break;
-    case 21:
-      tile_ver[index] = OPT_2_ONLY_PHI_ERR_INS(index);
-      break;
-    case 22:
-      tile_ver[index] = new_idea(index);
-      break;
-    case 23:
-      tile_ver[index] = EQUAL_THETA_0(index);
-      break;
-    case 24:
-      tile_ver[index] = EQUAL_THETA_0_EXT(index, 1);
-      break;
-    case 25:
-      tile_ver[index] = EQUAL_THETA_0_EXT(index, 2);
-      break;
-    case 26:
-      tile_ver[index] = OPT_2_DYNAMIC(index);
-      break;
-    case 27:
-      tile_ver[index] = PROPOSED_EXT_TWO_SIDES(index, abs(est_err[index][0]));
-      break;  
-    case 28:
-      tile_ver[index] = PROPOSED_EXT_TWO_SIDES(index, max_est_err[index]); 
-      break;
-    case 29:
-      tile_ver[index] = new_idea_half_max(index);
-      break;
-    case 30:
-      tile_ver[index] = new_idea_new_idea(index);
-      break;
-    case 31:
-      tile_ver[index] = OPT_2_LAST_ERR(index);
-      break;
-    case 32:
-      tile_ver[index] = OPT_2_MAX_ERR(index);
-      break;
-    case 33:
-      tile_ver[index] = OPT_2_NO_ERR(index);
-      break;
-    case 34:
-      tile_ver[index] = OPT_2_NO_INPO(index);
-      break;
-    case 35:
+    case 11:
       tile_ver[index] = OPT_2_ADAPTIVE(index);
       break;
-    case 36:
-      cout << "index=" << index << ",err=" << max_est_err_frame[index];
+    case 12:
       tile_ver[index] = OPT_2_ERR_TWO_SIDE(index, max_est_err_frame[index]);
       break;
-    case 37:
-      tile_ver[index] = OPT_2_ERR_TWO_SIDE(index, med_est_err_frame[index]);
+    case 13:
+      tile_ver[index] = OPT_2_ERR_TWO_SIDE(index, max_est_err[index]);
       break;
-
+    case 14:
+      tile_ver[index] = OPT_2_ERR_TWO_SIDE(index, abs(est_err[index][0]));
+      break;
+    case 15:
+      tile_ver[index] = RE_DOWNLOAD(index);
+      break;
 }
   /* calculate processing time */
   gettimeofday(&t_end, NULL);
@@ -421,6 +353,307 @@ int* DecisionEngine::get_next_segment(int index){
   }
   return tile_ver[index];
 }
+int* DecisionEngine::RE_DOWNLOAD(int index){
+  int* tileVer;   
+  int* tile_down_status;
+  int i,j,last_played_frame;
+  double alpha = 0.5;
+  double delta_t = alpha * INTER * 1.0 / FPS; 
+  double down_time = 0;
+  double seg_br = 0;
+  int VP_EST_WIN = INTER;
+  int delta_phi, delta_theta;
+  double* speed = new double[2];
+  double SD = INTER * 1.0 / FPS;
+  int** est_vp = init2dArrayInt(INTER, 2);
+  int* cur_vp = new int[2];
+  double buff;
+  // decide tiles' versions
+  tileVer = ROI_ALL_FRAME(TILE_SEG_BR[index], TILE_SEG_MSE[index], est_seg_thrp[index],est_frame_vp+index*INTER); 
+  // download tiles until time 'delta_t'
+  seg_br = 0;
+  for(i=0; i < No_tile; i++){
+    tile_down_status[i] = 0;
+    seg_br += TILE_SEG_BR[index][i][tileVer[i]];
+  }
+  if(index==0)
+    seg_down_start_time[index] = 0;
+  else
+    seg_down_start_time[index] = seg_down_start_time[index-1] + seg_down_time[index-1] + time_to_next_request[index-1]; 
+  if(BUFFERING_STATE == true)
+    seg_down_time[index] = calc_seg_down_time(seg_down_start_time[index], seg_br, SD, bw_trace); 
+  else{
+    // download tiles for a duration of 'delta_t'
+    down_time = DOWN_SEG_PART_1(tileVer, TILE_SEG_BR[index], delta_t, tile_down_status, bw_trace, seg_down_start_time[index]);
+    // re-estimate future viewport
+    last_played_frame = last_frame_id[index-1] + (int)(min(down_time, buff_level[index-1]) * FPS); 
+    cur_vp[0] = htrace[last_played_frame][0];
+    cur_vp[1] = htrace[last_played_frame][1];
+    buff = buff_level[index-1] - down_time; 
+    // phi
+    if(last_played_frame >= VP_EST_WIN){
+      delta_phi = htrace[last_played_frame][0] - htrace[last_played_frame - VP_EST_WIN][0];
+    }
+    else{
+      delta_phi = htrace[last_played_frame][0] - htrace[0][0];
+    }
+    if(delta_phi < -180)
+      delta_phi += 360;
+    else
+      if(delta_phi > 180)
+        delta_phi -= 360;
+    if(last_played_frame == 0)
+      speed[0] = 0;
+    else
+      speed[0] = delta_phi/(1.0 * ((last_played_frame >= VP_EST_WIN)?VP_EST_WIN:last_played_frame));
+    // theta
+    if(last_played_frame >= VP_EST_WIN)
+      delta_theta = htrace[last_played_frame][1] - htrace[last_played_frame-VP_EST_WIN][1];
+    else
+      delta_theta = htrace[last_played_frame][1] - htrace[0][1];
+    // printf("delta_theta=%d\n", delta_theta);
+    if(delta_theta < -90)
+      delta_theta += 180;
+    else
+      if(delta_theta > 90)
+        delta_theta -= 180;
+    if(last_played_frame == 0)
+      speed[1] = 0;
+    else
+      speed[1] = delta_theta/(1.0 * ((last_played_frame >= VP_EST_WIN)?VP_EST_WIN:last_played_frame));
+    for(i=0; i < INTER; i++){
+      //
+      est_vp[i][0] = (int) (cur_vp[0] + speed[0] * (buff*FPS + i));
+      est_vp[i][1] = (int) (cur_vp[1] + speed[1] * (buff*FPS + i));
+      // phi
+      while(est_vp[i][0] >= 180)
+        est_vp[i][0] -= 360;
+      while(est_vp[i][0] < -180)
+        est_vp[i][0] += 360;
+      // theta
+      while(est_vp[i][1] >= 90)
+        est_vp[i][1] -= 90;
+      while(est_vp[i][1] <= -90)//
+        est_vp[i][1] += 90;
+    }
+    // re-decide tiles' versions
+    tileVer = ROI_ALL_FRAME(TILE_SEG_BR[index], TILE_SEG_MSE[index], est_seg_thrp[index] * (SD - down_time)*1.0/SD, est_vp, tile_down_status, tileVer); 
+    // download remaining tiles
+    for(i=0; i < No_tile; i++)
+      if(tile_down_status[i] == 0){
+        
+      }
+  }
+  return NULL; 
+}
+// download tiles, less important to important ones
+double DecisionEngine::DOWN_SEG_PART_1(int* tileVer,double** TILE_BR,double delta_t,int* tile_down_status, double** bw_trace, double start_time){
+ double total_down_time = 0;
+ double tile_down_time;
+ double SD = INTER * 1.0 / FPS;
+ int tid;
+ for(tid = 0 ; tid < No_tile; tid++){
+   tile_down_time = calc_seg_down_time(start_time, TILE_BR[tid][tileVer[tid]], SD, bw_trace);
+   tile_down_status[tid] = 1;
+   total_down_time += tile_down_time;
+   start_time += tile_down_time;
+   if(total_down_time > delta_t)
+     break;
+ }
+ return total_down_time;
+}
+int* DecisionEngine::ROI_ALL_FRAME(double** TILE_BR, double** TILE_MSE, double est_thrp, int** est_frame_vp, int* tile_down_status, int* curTileVer){
+  int* tileVer = new int[No_tile];
+  int* visi_pixel;
+  int i,j,ii,jj;
+  double* w = new double[No_tile];
+  int LEN = 200;
+  GRBVar** x;
+  char*** x_name;
+  double** d = TILE_MSE; // tiles' distortions
+  cout << "#[ROI_ALL_FRAME] with versions of some tiles already known" << endl;
+  // calculate tiles' weights
+  for(i=0; i < No_tile; i++){
+    w[i] = 0;
+  }
+  for(j=0; j < INTER; j++){
+    visi_pixel = get_visible_pixel(est_frame_vp[j]); 
+    for(i=0; i < No_tile; i++){
+      w[i] += visi_pixel[i] * 1.0 / (vp_W * vp_H);
+    }
+  }
+  // 
+  try {
+    GRBEnv env = GRBEnv();
+    GRBModel model = GRBModel(env);
+    // init
+    x = new GRBVar*[No_tile];
+    x_name = new char**[No_tile];
+    for(i=0; i < No_tile; i++){
+      if(tile_down_status[i] == 0){
+        x[i] = new GRBVar[NO_VER];
+        x_name[i] = new char*[NO_VER];
+        for(j=0; j < NO_VER; j++)
+          x_name[i][j] = new char[LEN];
+      }
+    }
+    // Create variables
+    for(i=0; i < No_tile; i++){
+      if(tile_down_status[i] == 0){
+        for(j=0; j < NO_VER; j++){
+          x_name[i][j] = new char[LEN];
+          sprintf(x_name[i][j], "x_%d_%d", i, j);
+          x[i][j] = model.addVar(0.0, 1.0, 0.0, GRB_BINARY, x_name[i][j]);
+        }
+      }
+    }
+    // objective funtion
+    GRBQuadExpr obj;
+    GRBQuadExpr avgVPQL = 0;
+    GRBQuadExpr tmp = 0;
+    for(i=0; i < No_tile; i++){
+      if(tile_down_status[i] == 0){
+        for(j=0; j < NO_VER; j++){
+          avgVPQL += w[i]*d[i][j]*x[i][j];
+        }
+      }
+    }
+    obj = avgVPQL;
+    model.setObjective(obj, GRB_MINIMIZE);
+    // set constraints
+    // c1: total tiles' bitrates does not exceed bandwidth
+    GRBLinExpr constr_1 = 0;
+    GRBLinExpr* constr_2 = new GRBLinExpr[No_tile];
+    for(i=0; i < No_tile; i++){
+      if(tile_down_status[i] == 0){
+        constr_2[i] = 0;
+        for(j=0; j < NO_VER; j++){
+          constr_1 += TILE_BR[i][j] * x[i][j];
+          constr_2[i] += x[i][j];
+        }
+        model.addConstr(constr_2[i] == 1, "constr_2");
+      }
+    }
+    model.addConstr(constr_1 <= est_thrp, "constr_1");
+    // Optimize model
+    model.optimize();
+    for(i=0; i < No_tile; i++){
+      if(tile_down_status[i] == 0){
+        for(j=0; j < NO_VER; j++){
+          if(x[i][j].get(GRB_DoubleAttr_X) == 1){
+            // cout << j << " ";
+            tileVer[i] = j;
+          }
+        }
+      }else{
+        tileVer[i] = curTileVer[i];
+      }
+      // if((i+1)%No_tile_h == 0)
+      //     cout << endl;
+    }
+
+    // cout << "Obj: " << model.get(GRB_DoubleAttr_ObjVal) << endl;
+
+  } catch(GRBException e) {
+    cout << "Error code = " << e.getErrorCode() << endl;
+    cout << e.getMessage() << endl;
+  } catch(...) {
+    cout << "Exception during optimization" << endl;
+  }
+
+  return tileVer;
+}
+int* DecisionEngine::ROI_ALL_FRAME(double** TILE_BR, double** TILE_MSE, double est_thrp, int** est_frame_vp){
+  int* tileVer = new int[No_tile];
+  int* visi_pixel;
+  int i,j,ii,jj;
+  double* w = new double[No_tile];
+  int LEN = 200;
+  GRBVar** x;
+  char*** x_name;
+  double** d = TILE_MSE; // tiles' distortions
+  cout << "#[ROI_ALL_FRAME]"<< endl;
+  // calculate tiles' weights
+  for(i=0; i < No_tile; i++){
+    w[i] = 0;
+  }
+  for(j=0; j < INTER; j++){
+    visi_pixel = get_visible_pixel(est_frame_vp[j]); 
+    for(i=0; i < No_tile; i++){
+      w[i] += visi_pixel[i] * 1.0 / (vp_W * vp_H);
+    }
+  }
+  // 
+  try {
+    GRBEnv env = GRBEnv();
+    GRBModel model = GRBModel(env);
+    // init
+    x = new GRBVar*[No_tile];
+    x_name = new char**[No_tile];
+    for(i=0; i < No_tile; i++){
+      x[i] = new GRBVar[NO_VER];
+      x_name[i] = new char*[NO_VER];
+      for(j=0; j < NO_VER; j++)
+        x_name[i][j] = new char[LEN];
+    }
+    // Create variables
+    for(i=0; i < No_tile; i++){
+      for(j=0; j < NO_VER; j++){
+        x_name[i][j] = new char[LEN];
+        sprintf(x_name[i][j], "x_%d_%d", i, j);
+        x[i][j] = model.addVar(0.0, 1.0, 0.0, GRB_BINARY, x_name[i][j]);
+      }
+    }
+    // objective funtion
+    GRBQuadExpr obj;
+    GRBQuadExpr avgVPQL = 0;
+    GRBQuadExpr tmp = 0;
+    for(i=0; i < No_tile; i++){
+      for(j=0; j < NO_VER; j++){
+        avgVPQL += w[i]*d[i][j]*x[i][j];
+      }
+    }
+    obj = avgVPQL;
+    model.setObjective(obj, GRB_MINIMIZE);
+    // set constraints
+    // c1: total tiles' bitrates does not exceed bandwidth
+    GRBLinExpr constr_1 = 0;
+    GRBLinExpr* constr_2 = new GRBLinExpr[No_tile];
+    for(i=0; i < No_tile; i++){
+      constr_2[i] = 0;
+      for(j=0; j < NO_VER; j++){
+        constr_1 += TILE_BR[i][j] * x[i][j];
+        constr_2[i] += x[i][j];
+      }
+      model.addConstr(constr_2[i] == 1, "constr_2");
+    }
+    model.addConstr(constr_1 <= est_thrp, "constr_1");
+    // Optimize model
+    model.optimize();
+    for(i=0; i < No_tile; i++){
+      for(j=0; j < NO_VER; j++){
+        if(x[i][j].get(GRB_DoubleAttr_X) == 1){
+          // cout << j << " ";
+          tileVer[i] = j;
+        }
+      }
+      // if((i+1)%No_tile_h == 0)
+      //     cout << endl;
+    }
+
+    // cout << "Obj: " << model.get(GRB_DoubleAttr_ObjVal) << endl;
+
+  } catch(GRBException e) {
+    cout << "Error code = " << e.getErrorCode() << endl;
+    cout << e.getMessage() << endl;
+  } catch(...) {
+    cout << "Exception during optimization" << endl;
+  }
+
+  return tileVer;
+
+}
+
 int* DecisionEngine::OPT_2_ADAPTIVE(int index){
   double speed_thres = 5.0;
   int NUM_EXT_PART = 9;
@@ -871,11 +1104,11 @@ int* DecisionEngine::PROPOSED_EXT_TWO_SIDES(int index, int ext_err){
                   tmp_vp[0] = (int) (est_frame_vp[index * INTER + j][0] - j * ext_err * 1.0 / (INTER - 1));
                   tmp_vp[1] = est_frame_vp[index * INTER + j][1];
                 }
-                tmp_vp = norm_vp_range(tmp_vp);
+                norm_vp_range(tmp_vp);
                 vpPSNR += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
                 //
                 tmp_vp[0] = 2 * est_frame_vp[index*INTER][0] - tmp_vp[0];
-                tmp_vp = norm_vp_range(tmp_vp);
+                norm_vp_range(tmp_vp);
                 vpPSNR_oposite += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
               }
               if((vpPSNR + vpPSNR_oposite) > max_vpPSNR){
@@ -2969,9 +3202,11 @@ int* DecisionEngine::OPT_2_MAX_ERR(int index){
     }//2
 
 }
+cout << "count=" << count << endl;
 return ret;
 }
 int* DecisionEngine::OPT_2_ERR_TWO_SIDE(int index, int ext_err){
+  int* tmp_vp = new int[2];
   int NUM_EXT_PART = 9;
   int i[100], j, ii;
   int EXT_W = 2;
@@ -2980,7 +3215,7 @@ int* DecisionEngine::OPT_2_ERR_TWO_SIDE(int index, int ext_err){
   int* tileVer = (int*) malloc(No_tile * sizeof(int));
   int* ret = (int*) malloc(No_tile * sizeof(int));
   // 
-  printf("#[OPT_2_LAST_ERR] index=%d\n", index);
+  printf("#[OPT_2_ERR_TWO_SIDE] index=%d err=%d\n", index, ext_err);
   int* vmask = get_visible_tile(est_vp[index]);
   if(vmask == NULL){
     printf("(%d, %d)\n", est_vp[index][0], est_vp[index][1]);
@@ -3163,29 +3398,10 @@ int* DecisionEngine::OPT_2_ERR_TWO_SIDE(int index, int ext_err){
                           break;
                       }
                       // compute viewport PSNR
-                      /*
                       vpPSNR = 0;
                       vpPSNR_oposite = 0;
-                      int tmp_vp[2];
                       for(j=0; j < INTER; j++){
-                        tmp_vp[0] = est_frame_vp[index * INTER + j][0];
-                        tmp_vp[1] = est_frame_vp[index * INTER + j][1];
-                        //tmp_vp[0] = est_frame_vp_err_max_left[index * INTER + j][0];
-                        //tmp_vp[1] = est_frame_vp_err_max_left[index * INTER + j][1];
-                        vpPSNR += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
-                        //
-                        tmp_vp[0] = est_frame_vp_2_opp[index*INTER + j][0];
-                        tmp_vp[1] = est_frame_vp_2_opp[index*INTER + j][1];
-                        //tmp_vp[0] = est_frame_vp_err_max_right[index * INTER + j][0];
-                        //tmp_vp[1] = est_frame_vp_err_max_right[index * INTER + j][1];
-                        vpPSNR_oposite += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
-                      }
-                      */
-                      // compute viewport PSNR
-                      vpPSNR = 0;
-                      vpPSNR_oposite = 0;
-                      int* tmp_vp = new int[2];
-                      for(j=0; j < INTER; j++){
+                        tmp_vp = new int[2];
                         if(est_frame_vp[index*INTER + INTER - 1] > est_frame_vp[index * INTER]){
                           tmp_vp[0] = (int) (est_frame_vp[index * INTER + j][0] + j * ext_err * 1.0 / (INTER - 1));
                           tmp_vp[1] = est_frame_vp[index * INTER + j][1];
@@ -3193,29 +3409,18 @@ int* DecisionEngine::OPT_2_ERR_TWO_SIDE(int index, int ext_err){
                           tmp_vp[0] = (int) (est_frame_vp[index * INTER + j][0] - j * ext_err * 1.0 / (INTER - 1));
                           tmp_vp[1] = est_frame_vp[index * INTER + j][1];
                         }
-                        tmp_vp = norm_vp_range(tmp_vp);
+                        norm_vp_range(tmp_vp);
                         vpPSNR += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
                         //
                         tmp_vp[0] = 2 * est_frame_vp[index*INTER][0] - tmp_vp[0];
-                        tmp_vp = norm_vp_range(tmp_vp);
+                        norm_vp_range(tmp_vp);
                         vpPSNR_oposite += 1.0 / INTER * est_vp_psnr(TILE_SEG_MSE[index], No_tile, tileVer, tmp_vp);
+                        free(tmp_vp);
                       }
                       if((vpPSNR + vpPSNR_oposite) > max_vpPSNR){
-                        //for(j=0; j < No_tile; j++)
-                        //  ret[j] = tileVer[j];
                         std::copy (tileVer, tileVer + No_tile, ret);
                         max_vpPSNR = vpPSNR + vpPSNR_oposite;
                         max_remainBW = remainBW2;
-                        if(index==3 && max_vpPSNR >= 42.39){
-                          double total_br = 0;
-                          // printf("[DUC]: remainBW=%.2f\n", remainBW2);
-                          for(j=0; j < No_tile; j++){
-                            total_br += TILE_SEG_BR[index][j][ret[j]];
-                            // printf("%d ", tileVer[j]);
-                            // if((j+1) % 8 == 0) printf("\n");
-                          }
-                          // printf("[DUC]: total_br=%.2f remainBW=%.2f\n", total_br, est_seg_thrp[index] - total_br);
-                        }
                       }
                       count++;
                     }
@@ -3230,6 +3435,7 @@ int* DecisionEngine::OPT_2_ERR_TWO_SIDE(int index, int ext_err){
     }//2
 
 }
+cout << "cnt=" << count << endl;
 return ret;
 }
 int* DecisionEngine::OPT_2_LAST_ERR(int index){
@@ -4493,6 +4699,11 @@ double DecisionEngine::calc_seg_down_time(double t_start, double BR, double SD, 
   down_time += seg_size / bw_trace[N_0][1];
   return down_time;
 }
+void DecisionEngine::down_next_segment_3(int index){
+  double alpha = 0.5;
+  double delta_t = alpha * INTER * 1.0 / FPS;
+  // determine which tiles have been downloaded after 'delta_t'
+}
 // for real bandwidth trace
 void DecisionEngine::down_next_segment_2(int index){
   // request and receive tiles' versions
@@ -4502,8 +4713,11 @@ void DecisionEngine::down_next_segment_2(int index){
     seg_down_start_time[index] = 0;
   else
     seg_down_start_time[index] = seg_down_start_time[index-1] + seg_down_time[index-1] + time_to_next_request[index-1]; 
+  // calculate segment download time
   seg_down_time[index] = calc_seg_down_time(seg_down_start_time[index], seg_br[index],INTER*1.0/FPS, bw_trace);
+  // calculate segment throughput
   seg_thrp[index] = seg_br[index]*1.0*(INTER*1.0/FPS) / seg_down_time[index];
+  // update buffer status
   if(index < BUFF/INTER){
     if(index == 0)
       buff_level[index] =  INTER*1.0/FPS;
@@ -4899,7 +5113,7 @@ void DecisionEngine::thrp_estimator(int index){
   }
   // decide the total bitrate allocated for tiles
   switch(TILE_SELECT_METHOD){
-    case 12:
+    case 9:
       if(index==0)
         all_seg_br[index] = 0;
       else
@@ -5007,7 +5221,7 @@ void DecisionEngine::vp_estimator(int index){
               est_err_frame[i][0] -= 360;
             if(est_err_frame[i][0] < -180)
               est_err_frame[i][0] += 360;
-           estErrListFrame.push_back(abs(est_err_frame[i][0])); 
+            estErrListFrame.push_back(abs(est_err_frame[i][0])); 
           }
           max_est_err_frame[index] = maximum(estErrListFrame);
           med_est_err_frame[index] = median(estErrListFrame); 

@@ -124,19 +124,15 @@ bool compare_string(string a, string b){
     return true;
   return false;
 }
-int* norm_vp_range(int* vp){
-  int* norm_vp = new int[2];
-  norm_vp[0] = vp[0];
-  norm_vp[1] = vp[1];
-  while(norm_vp[0] >= 180)
-    norm_vp[0] -= 360;
-  while(norm_vp[0] < -180)
-    norm_vp[0] += 360;
-  while(norm_vp[1] >= 90)
-    norm_vp[1] -= 90;
-  while(norm_vp[1] <= -90)
-    norm_vp[1] += 90;
-  return norm_vp;
+void norm_vp_range(int* norm_vp){
+  while(*norm_vp >= 180)
+    *norm_vp -= 360;
+  while(*norm_vp < -180)
+    *norm_vp += 360;
+  while(*(norm_vp+1) >= 90)
+    *(norm_vp+1) -= 90;
+  while(*(norm_vp+1) <= -90)
+    *(norm_vp+1) += 90;
 }
 double max(double a, double b){
   if(a >= b) return a;
